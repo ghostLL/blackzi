@@ -2,7 +2,7 @@
 //由整点薯条大佬优化
 //blackzi 2025-6-17修改
 let $ = {
-Bilibili:'https://www.bilibili.com',
+Bilibili:'https://www.tiktok.com',
 Baidu:'https://www.baidu.com',
 Youtube:'https://www.youtube.com/',
 Google:'https://www.google.com/generate_204',
@@ -10,7 +10,7 @@ Github:'https://www.github.com'
 }
 
 !(async () => {
-  let results = await Promise.allSettled([http('Baidu'), http('Bilibili'), http('Github'), http('Google'), http('Youtube')])
+  let results = await Promise.allSettled([http('Baidu'), http('Tiktok'), http('Github'), http('Google'), http('Youtube')])
     .then(results => results.map(result => result.value));
 
   $done({
@@ -31,3 +31,4 @@ function http(req) {
         });
     });
 }
+p
