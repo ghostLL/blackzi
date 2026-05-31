@@ -1,0 +1,61 @@
+# NAME: Z-Library
+# AUTHOR: blackzi (based on blackmatrix7 template)
+# REPO: https://github.com/blackmatrix7/ios_rule_script
+# UPDATED: 2026-05-31
+# DOMAIN: 12
+# DOMAIN-SUFFIX: 25
+# DOMAIN-KEYWORD: 8
+# TOTAL: 45
+
+# 主域名和官方入口
+DOMAIN,z-lib.id
+DOMAIN-SUFFIX,z-library.ec
+DOMAIN-SUFFIX,z-library.sk
+DOMAIN-SUFFIX,z-lib.fm
+DOMAIN-SUFFIX,z-lib.id
+DOMAIN-SUFFIX,1lib.sk
+DOMAIN-SUFFIX,z-library.bz
+DOMAIN-SUFFIX,z-library.im
+
+# 常用历史/备用域名
+DOMAIN-SUFFIX,z-lib.gl
+DOMAIN-SUFFIX,z-lib.gd
+DOMAIN-SUFFIX,article.sk
+DOMAIN-SUFFIX,articles.sk
+DOMAIN-SUFFIX,singlelogin.re
+DOMAIN-SUFFIX,zlibrary.st
+DOMAIN-SUFFIX,z-lib.ai
+
+# 登录与访问相关
+DOMAIN-SUFFIX,loginzlib
+DOMAIN-SUFFIX,bookszlib
+
+# 关键词规则（覆盖子域和变体）
+DOMAIN-KEYWORD,z-library
+DOMAIN-KEYWORD,zlib
+DOMAIN-KEYWORD,z-lib
+DOMAIN-KEYWORD,1lib
+DOMAIN-KEYWORD,singlelogin
+DOMAIN-KEYWORD,bookfi
+DOMAIN-KEYWORD,b-ok
+DOMAIN-KEYWORD,3lib
+
+# 其他常见关联域名
+DOMAIN-SUFFIX,zlib24th6ptyb4ibzn3tj2cndqafs6rhm4ed4gruxztaaco35lka.b32.i2p
+DOMAIN-SUFFIX,bookszlibb74ugqojhzhg2a63w5i2atv5bqarulgczawnbmsb6s6qead.onion
+DOMAIN-SUFFIX,loginzlib2vrak5zzpcocc3ouizykn6k5qecgj2tzlnab5wcbqhembyd.onion
+
+# CDN / 静态资源 / API 相关（常用）
+DOMAIN-SUFFIX,zlibrarycdn.com
+DOMAIN-SUFFIX,z-libcdn.com
+DOMAIN-SUFFIX,zlibr.org
+DOMAIN-SUFFIX,zlibcdn.net
+
+# 额外补充（覆盖更多变体）
+DOMAIN-SUFFIX,z-lib.org
+DOMAIN-SUFFIX,b-ok.org
+DOMAIN-SUFFIX,3lib.net
+DOMAIN-SUFFIX,z-lib.se
+DOMAIN-SUFFIX,zlibrary.io
+DOMAIN-SUFFIX,z-library.download
+DOMAIN-SUFFIX,zlib.cc
