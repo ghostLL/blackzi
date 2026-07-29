@@ -1,8 +1,9 @@
 /**
- * Egern Auto Check-in Script for Telegram
+ * Egern Auto Check-in Script for Telegram (Fixed)
  */
 
-async function runCheckin() {
+export default async function(ctx) {
+  // 优先从环境变量获取，也可以从 ctx 中获取配置
   const token = ctx.env.TG_BOT_TOKEN;
   const chatId = ctx.env.TG_CHAT_ID;
   const text = ctx.env.CHECKIN_TEXT || "/checkin";
@@ -55,5 +56,3 @@ function saveStatus(success, message) {
 
   $persistentStore.write(JSON.stringify(statusData), "tg_checkin_status");
 }
-
-runCheckin();
