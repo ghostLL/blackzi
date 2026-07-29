@@ -1,0 +1,33 @@
+name: "Telegram 自动签到"
+description: "定时向 Telegram 机器人或群组发送签到消息，并通过小组件显示签到状态与连续天数"
+author: "Grok"
+homepage: "https://egernapp.com"
+icon: "https://raw.githubusercontent.com/TelegramMessenger/Telegram-iOS/master/Telegram/Telegram-iOS/Assets.xcassets/AppIcon.appiconset/Icon-60@2x.png"
+
+compat_arguments:
+  BOT_TOKEN: ""
+  CHAT_ID: ""
+  CHECKIN_TEXT: "/checkin"
+  CRON: "0 8 * * *"
+  NOTIFY: "true"
+
+scriptings:
+  - schedule:
+      name: "tg-checkin"
+      cron: "{{{CRON}}}"
+      script_url: "tg-checkin.js"          # 本地脚本，或改成你的远程 raw URL
+      timeout: 30
+      env:
+        BOT_TOKEN: "{{{BOT_TOKEN}}}"
+        CHAT_ID: "{{{CHAT_ID}}}"
+        CHECKIN_TEXT: "{{{CHECKIN_TEXT}}}"
+        NOTIFY: "{{{NOTIFY}}}"
+
+  - generic:
+      name: "tg-checkin-widget"
+      script_url: "tg-checkin-widget.js"  # 本地脚本，或改成你的远程 raw URL
+      timeout: 15
+
+widgets:
+  - name: "tg-checkin-widget"
+    script_name: "tg-checkin-widget"
