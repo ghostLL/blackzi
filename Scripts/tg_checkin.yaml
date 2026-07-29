@@ -15,7 +15,7 @@ scriptings:
   - schedule:
       name: "tg-checkin"
       cron: "{{{CRON}}}"
-      script_url: "https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/tg-checkin.js"          # 本地脚本，或改成你的远程 raw URL
+      script_url: "https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/tg_checkin.js"          # 本地脚本，或改成你的远程 raw URL
       timeout: 30
       env:
         BOT_TOKEN: "{{{BOT_TOKEN}}}"
@@ -25,7 +25,7 @@ scriptings:
 
   - generic:
       name: "tg-checkin-widget"
-      script_url: "https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/tg-checkin-widget.js"  # 本地脚本，或改成你的远程 raw URL
+      script_url: "https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/tg_widget.js"  # 本地脚本，或改成你的远程 raw URL
       timeout: 15
 
 widgets:
