@@ -11,12 +11,12 @@ scripts:
   - name: tg_auto_checkin
     type: cron
     cron: "0 8 * * *"  # 每天早上 08:00 自动运行
-    script_path: tg_checkin.js
+    script_path: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/tg_checkin.js
     timeout: 30
 
   - name: tg_widget_script
     type: generic
-    script_path: tg_widget.js
+    script_path: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/tg_widget.js
 
 widgets:
   - name: TG 签到卡片
