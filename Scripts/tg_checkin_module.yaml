@@ -1,0 +1,23 @@
+name: Telegram 自动签到与小组件
+description: 自动触发 Telegram 机器人/群组签到，并提供桌面小组件状态显示
+author: Egern User
+
+env:
+  TG_BOT_TOKEN: "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" # 替换为你的 Telegram Bot Token
+  TG_CHAT_ID: "-100123456789"                      # 替换为目标机器人或群组 Chat ID
+  CHECKIN_TEXT: "/checkin"                         # 签到触发命令（如：/checkin 或 签到）
+
+scripts:
+  - name: tg_auto_checkin
+    type: cron
+    cron: "0 8 * * *"  # 每天早上 08:00 自动运行
+    script_path: tg_checkin.js
+    timeout: 30
+
+  - name: tg_widget_script
+    type: generic
+    script_path: tg_widget.js
+
+widgets:
+  - name: TG 签到卡片
+    script_name: tg_widget_script
