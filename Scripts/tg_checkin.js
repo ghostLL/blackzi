@@ -3,9 +3,9 @@
  */
 
 async function runCheckin() {
-  const token = $environment?.env?.TG_BOT_TOKEN;
-  const chatId = $environment?.env?.TG_CHAT_ID;
-  const text = $environment?.env?.CHECKIN_TEXT || "/checkin";
+  const token = ctx.env.TG_BOT_TOKEN;
+  const chatId = ctx.env.TG_CHAT_ID;
+  const text = ctx.env.CHECKIN_TEXT || "/checkin";
 
   if (!token || !chatId) {
     console.log("[TG Checkin] 缺少必要的环境变量：TG_BOT_TOKEN 或 TG_CHAT_ID");
