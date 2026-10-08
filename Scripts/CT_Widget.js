@@ -328,11 +328,36 @@ function parseTelecom(detail, balance, opts) {
     };
   }
 
-  // 话费
-  const feeNum = Number(balance?.totalBalanceAvailable);
+  // 话费（兼容多种返回字段，单位均为分）
+  let feeNum = NaN;
+  const candidates = [
+    balance?.totalBalanceAvailable,
+    balance?.balanceAvailable,
+    balance?.availableBalance,
+    balance?.totalBalance,
+    balance?.balance,
+    balance?.acctBalance,
+    balance?.realBalance,
+    // 有时嵌套在 data / result 里
+    balance?.data?.totalBalanceAvailable,
+    balance?.data?.balance,
+    balance?.result?.totalBalanceAvailable,
+  ];
+  for (const v of candidates) {
+    if (v === undefined || v === null || v === '') continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) {
+      feeNum = n;
+      break;
+    }
+  }
+  // 若绝对值很大（>100000），可能已是分；若很小可能是元，这里统一按分处理
+  // 正常话费很少超过 100000 元，所以 > 100000 仍按分；否则也按分（原接口文档明确是分）
+  const feeYuan = Number.isFinite(feeNum) ? (feeNum / 100).toFixed(2) : '0.00';
+
   const fee = {
     title: '剩余话费',
-    number: Number.isFinite(feeNum) ? (feeNum / 100).toFixed(2) : '0.00',
+    number: feeYuan,
     unit: '元',
     color: COLORS.fee,
   };
