@@ -400,27 +400,6 @@ async function loadData(ctx) {
 
 // ========== UI 组件 ==========
 
-function progressBar(percent, color, height = 4) {
-  const p = Math.min(100, Math.max(0, percent || 0));
-  return {
-    type: 'stack',
-    direction: 'row',
-    width: '100%',
-    height,
-    borderRadius: height / 2,
-    backgroundColor: COLORS.progressBg,
-    children: [
-      {
-        type: 'stack',
-        width: `${p}%`,
-        height,
-        borderRadius: height / 2,
-        backgroundColor: color,
-      },
-    ],
-  };
-}
-
 function makeCard(title, value, unit, percent, color, compact = false) {
   const padding = compact ? [8, 10, 8, 10] : [10, 12, 10, 12];
   return {
@@ -470,15 +449,7 @@ function makeCard(title, value, unit, percent, color, compact = false) {
           },
         ],
       },
-      percent != null
-        ? {
-            type: 'stack',
-            width: '100%',
-            padding: [2, 0, 0, 0],
-            children: [progressBar(percent, color, 3)],
-          }
-        : null,
-    ].filter(Boolean),
+    ],
   };
 }
 
