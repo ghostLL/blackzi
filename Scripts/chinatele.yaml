@@ -18,7 +18,7 @@ scriptings:
     name: china-telecom
     # 请将下方 script_url 替换为你托管的 CT_Widget.js 的 raw 地址
     # 例如上传到 GitHub 后使用 raw.githubusercontent.com 链接
-    script_url: https://raw.githubusercontent.com/你的用户名/你的仓库/main/CT_Widget.js
+    script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget.js
 - http_request:
     name: 中国电信自动捕获
     match: '^https://e\.dli[^{{{ctCapture}}}]e\.cn/'
