@@ -1,6 +1,6 @@
 name: 中国电信小组件
-description: 中国电信 话费 语音 流量小组件
-author: iBL3ND
+description: 中国电信 话费 语音 流量小组件（优化版·区分国内/本地）
+author: iBL3ND (optimized)
 icon: https://iili.io/nEufFXR.png
 compat_arguments:
   ctCapture: 'true'
@@ -16,7 +16,9 @@ dns: {}
 scriptings:
 - generic:
     name: china-telecom
-    script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget.JS
+    # 请将下方 script_url 替换为你托管的 CT_Widget.js 的 raw 地址
+    # 例如上传到 GitHub 后使用 raw.githubusercontent.com 链接
+    script_url: https://raw.githubusercontent.com/你的用户名/你的仓库/main/CT_Widget.js
 - http_request:
     name: 中国电信自动捕获
     match: '^https://e\.dli[^{{{ctCapture}}}]e\.cn/'
