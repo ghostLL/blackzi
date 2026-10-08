@@ -400,20 +400,18 @@ async function loadData(ctx) {
 
 // ========== UI 组件 ==========
 
-function makeCard(title, value, unit, percent, color, compact = false) {
-  const padding = compact ? [8, 10, 8, 10] : [10, 12, 10, 12];
+function makeCapsule(title, value, unit) {
   return {
     type: 'stack',
     direction: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    padding,
+    padding: [8, 8, 8, 8],
     backgroundColor: COLORS.card,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
-    gap: 4,
     children: [
       {
         type: 'text',
@@ -429,20 +427,20 @@ function makeCard(title, value, unit, percent, color, compact = false) {
         direction: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 2,
+        gap: 3,
         children: [
           {
             type: 'text',
-            text: String(value),
-            font: { size: 'title2', weight: 'bold' },
+            text: String(value ?? '0'),
+            font: { size: 'title2', weight: 'semibold' },
             textColor: COLORS.value,
             textAlign: 'center',
             maxLines: 1,
-            minScale: 0.6,
+            minScale: 0.65,
           },
           {
             type: 'text',
-            text: unit,
+            text: unit || '',
             font: { size: 'caption2', weight: 'regular' },
             textColor: COLORS.title,
             maxLines: 1,
@@ -512,129 +510,66 @@ function headerRow(title, ds) {
 }
 
 function buildMainWidget(title, ds) {
-  // 话费卡片（整行）
-  const feeCard = {
-    type: 'stack',
-    direction: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: [10, 12, 10, 12],
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  // 第一行：话费 + 国内语音 + 本地语音（有本地才显示）
+  const topRowChildren = [
+    makeCapsule(ds.fee.title, ds.fee.number, ds.fee.unit),
+    makeCapsule(
+      ds.voiceDomestic.title,
+      ds.voiceDomestic.number,
+      ds.voiceDomestic.unit
+    ),
+  ];
+  if (ds.voiceLocal) {
+    topRowChildren.push(
+      makeCapsule(
+        ds.voiceLocal.title,
+        ds.voiceLocal.number,
+        ds.voiceLocal.unit
+      )
+    );
+  }
+
+  // 第二行：国内流量 + 本地流量（有本地才显示）
+  const bottomRowChildren = [
+    makeCapsule(
+      ds.flowDomestic.title,
+      ds.flowDomestic.number,
+      ds.flowDomestic.unit
+    ),
+  ];
+  if (ds.flowLocal) {
+    bottomRowChildren.push(
+      makeCapsule(
+        ds.flowLocal.title,
+        ds.flowLocal.number,
+        ds.flowLocal.unit
+      )
+    );
+  }
+
+  return {
+    type: 'widget',
+    backgroundColor: COLORS.bg,
+    padding: [10, 14, 10, 14],
+    gap: 10,
+    refreshAfter: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     children: [
+      headerRow(title, ds),
       {
-        type: 'text',
-        text: ds.fee.title,
-        font: { size: 'caption2', weight: 'medium' },
-        textColor: COLORS.title,
-        textAlign: 'center',
+        type: 'stack',
+        direction: 'row',
+        alignItems: 'center',
+        gap: 9,
+        children: topRowChildren,
       },
       {
         type: 'stack',
         direction: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 3,
-        children: [
-          {
-            type: 'text',
-            text: String(ds.fee.number || '0.00'),
-            font: { size: 'title2', weight: 'bold' },
-            textColor: COLORS.fee,
-            textAlign: 'center',
-          },
-          {
-            type: 'text',
-            text: ds.fee.unit || '元',
-            font: { size: 'caption1', weight: 'medium' },
-            textColor: COLORS.title,
-          },
-        ],
+        gap: 9,
+        children: bottomRowChildren,
       },
     ],
-  };
-
-  // 构建 2x2 卡片：语音 + 流量
-  const cards = [];
-
-  // 国内语音
-  cards.push(
-    makeCard(
-      ds.voiceDomestic.title,
-      String(ds.voiceDomestic.number || '0'),
-      ds.voiceDomestic.unit || '分钟',
-      ds.voiceDomestic.percent,
-      COLORS.voice
-    )
-  );
-
-  // 本地语音（有则显示，无则用占位保持对称）
-  if (ds.voiceLocal) {
-    cards.push(
-      makeCard(
-        ds.voiceLocal.title,
-        String(ds.voiceLocal.number || '0'),
-        ds.voiceLocal.unit || '分钟',
-        ds.voiceLocal.percent,
-        COLORS.voice
-      )
-    );
-  }
-
-  // 国内流量
-  cards.push(
-    makeCard(
-      ds.flowDomestic.title,
-      String(ds.flowDomestic.number || '0'),
-      ds.flowDomestic.unit || 'GB',
-      ds.flowDomestic.percent,
-      COLORS.flow
-    )
-  );
-
-  // 本地流量
-  if (ds.flowLocal) {
-    cards.push(
-      makeCard(
-        ds.flowLocal.title,
-        String(ds.flowLocal.number || '0'),
-        ds.flowLocal.unit || 'GB',
-        ds.flowLocal.percent,
-        COLORS.flow
-      )
-    );
-  }
-
-  // 分成两行，每行最多 2 个
-  const row1 = {
-    type: 'stack',
-    direction: 'row',
-    gap: 8,
-    children: cards.slice(0, 2),
-  };
-
-  const row2Children = cards.slice(2);
-  const row2 = row2Children.length > 0
-    ? {
-        type: 'stack',
-        direction: 'row',
-        gap: 8,
-        children: row2Children,
-      }
-    : null;
-
-  const children = [headerRow(title, ds), feeCard, row1];
-  if (row2) children.push(row2);
-
-  return {
-    type: 'widget',
-    backgroundColor: COLORS.bg,
-    padding: [12, 14, 12, 14],
-    gap: 8,
-    refreshAfter: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    children,
   };
 }
 
@@ -686,21 +621,15 @@ function buildSmall(title, ds) {
       direction: 'row',
       gap: 6,
       children: [
-        makeCard(
+        makeCapsule(
           ds.voiceDomestic.title,
-          String(ds.voiceDomestic.number || '0'),
-          ds.voiceDomestic.unit || '分钟',
-          ds.voiceDomestic.percent,
-          COLORS.voice,
-          true
+          ds.voiceDomestic.number,
+          ds.voiceDomestic.unit
         ),
-        makeCard(
+        makeCapsule(
           ds.flowDomestic.title,
-          String(ds.flowDomestic.number || '0'),
-          ds.flowDomestic.unit || 'GB',
-          ds.flowDomestic.percent,
-          COLORS.flow,
-          true
+          ds.flowDomestic.number,
+          ds.flowDomestic.unit
         ),
       ],
     },
