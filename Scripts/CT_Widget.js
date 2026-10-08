@@ -15,6 +15,11 @@
  * 数据来源：
  *   https://e.dlife.cn/user/package_detail.do
  *   https://e.dlife.cn/user/balance.do
+ *
+ * 优化内容：
+ *   - 流量/语音自动区分「国内」与「本地」
+ *   - 界面美化（电信蓝系、进度条、卡片布局）
+ *   - 无本地数据时自动隐藏对应项
  */
 
 const URLS = {
@@ -94,10 +99,6 @@ function fmtTime(ts) {
 
 function isLocalName(name = '') {
   return /本地|省内|本市|本省/.test(name);
-}
-
-function isDomesticName(name = '') {
-  return /国内|通用|全国/.test(name) || !isLocalName(name);
 }
 
 function isDirectional(name = '') {
@@ -447,7 +448,7 @@ function makeCard(title, value, unit, percent, color, compact = false) {
       {
         type: 'stack',
         direction: 'row',
-        alignItems: 'baseline',
+        alignItems: 'center',
         justifyContent: 'center',
         gap: 2,
         children: [
@@ -540,8 +541,6 @@ function headerRow(title, ds) {
 }
 
 function buildMainWidget(title, ds) {
-  const cards = [];
-
   // 话费卡片（整行突出）
   const feeCard = {
     type: 'stack',
@@ -564,7 +563,7 @@ function buildMainWidget(title, ds) {
       {
         type: 'stack',
         direction: 'row',
-        alignItems: 'baseline',
+        alignItems: 'center',
         justifyContent: 'center',
         gap: 3,
         children: [
@@ -674,7 +673,7 @@ function buildSmall(title, ds) {
         {
           type: 'stack',
           direction: 'row',
-          alignItems: 'baseline',
+          alignItems: 'center',
           gap: 2,
           children: [
             {
@@ -906,7 +905,7 @@ async function handleCapture(ctx) {
 async function handleWidget(ctx) {
   const title = (ctx.env.CT_TITLE || '中国电信').trim() || '中国电信';
 
-  const { configured, ds, fromCache } = await loadData(ctx);
+  const { configured, ds } = await loadData(ctx);
 
   if (!configured) {
     return buildError(
