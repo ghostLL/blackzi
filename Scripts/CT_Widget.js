@@ -455,7 +455,7 @@ function makeCard(title, value, unit, percent, color, compact = false) {
           {
             type: 'text',
             text: String(value),
-            font: { size: compact ? 'title3' : 'title2', weight: 'bold' },
+            font: { size: 'title2', weight: 'bold' },
             textColor: COLORS.value,
             textAlign: 'center',
             maxLines: 1,
@@ -570,7 +570,7 @@ function buildMainWidget(title, ds) {
           {
             type: 'text',
             text: ds.fee.number,
-            font: { size: 'title1', weight: 'bold' },
+            font: { size: 'title2', weight: 'bold' },
             textColor: COLORS.fee,
             textAlign: 'center',
           },
