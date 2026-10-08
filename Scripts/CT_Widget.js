@@ -328,9 +328,9 @@ function parseTelecom(detail, balance, opts) {
     };
   }
 
-  // 话费（兼容多种返回字段，单位均为分）
-  let feeNum = NaN;
-  const candidates = [
+  // 话费 / 欠费（单位：分）
+  let availableFen = NaN;
+  const availableCandidates = [
     balance?.totalBalanceAvailable,
     balance?.balanceAvailable,
     balance?.availableBalance,
@@ -338,28 +338,66 @@ function parseTelecom(detail, balance, opts) {
     balance?.balance,
     balance?.acctBalance,
     balance?.realBalance,
-    // 有时嵌套在 data / result 里
     balance?.data?.totalBalanceAvailable,
     balance?.data?.balance,
     balance?.result?.totalBalanceAvailable,
   ];
-  for (const v of candidates) {
+  for (const v of availableCandidates) {
     if (v === undefined || v === null || v === '') continue;
     const n = Number(v);
     if (Number.isFinite(n)) {
-      feeNum = n;
+      availableFen = n;
       break;
     }
   }
-  // 若绝对值很大（>100000），可能已是分；若很小可能是元，这里统一按分处理
-  // 正常话费很少超过 100000 元，所以 > 100000 仍按分；否则也按分（原接口文档明确是分）
-  const feeYuan = Number.isFinite(feeNum) ? (feeNum / 100).toFixed(2) : '0.00';
+
+  let oweFen = NaN;
+  const oweCandidates = [
+    balance?.oweFee,
+    balance?.oweAmount,
+    balance?.historyOweFee,
+    balance?.balanceDue,
+    balance?.dueAmount,
+    balance?.arrears,
+    balance?.oweBalance,
+    balance?.data?.oweFee,
+    balance?.data?.oweAmount,
+    balance?.result?.oweFee,
+  ];
+  for (const v of oweCandidates) {
+    if (v === undefined || v === null || v === '') continue;
+    const n = Number(v);
+    if (Number.isFinite(n) && n !== 0) {
+      oweFen = Math.abs(n);
+      break;
+    }
+  }
+
+  let feeTitle = '剩余话费';
+  let feeYuan = '0.00';
+  let feeColor = COLORS.fee;
+
+  if (Number.isFinite(availableFen) && availableFen < 0) {
+    // 可用余额为负 → 欠费
+    feeTitle = '当前欠费';
+    feeYuan = (Math.abs(availableFen) / 100).toFixed(2);
+    feeColor = COLORS.error;
+  } else if (Number.isFinite(oweFen) && oweFen > 0) {
+    // 有明确欠费字段
+    feeTitle = '当前欠费';
+    feeYuan = (oweFen / 100).toFixed(2);
+    feeColor = COLORS.error;
+  } else if (Number.isFinite(availableFen)) {
+    feeTitle = '剩余话费';
+    feeYuan = (availableFen / 100).toFixed(2);
+    feeColor = COLORS.fee;
+  }
 
   const fee = {
-    title: '剩余话费',
+    title: feeTitle,
     number: feeYuan,
     unit: '元',
-    color: COLORS.fee,
+    color: feeColor,
   };
 
   return {
