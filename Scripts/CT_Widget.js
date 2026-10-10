@@ -357,6 +357,7 @@ function parseTelecom(detail, balance, opts) {
   }
 
   // 话费 / 欠费（单位：分）
+  // 1) 从 balance 接口取
   let availableFen = NaN;
   const availableCandidates = [
     balance?.totalBalanceAvailable,
@@ -401,23 +402,47 @@ function parseTelecom(detail, balance, opts) {
     }
   }
 
+  // 2) 兜底：从 package_detail 里找 unitTypeId==0（金额）的项
+  if ((!Number.isFinite(availableFen) || availableFen === 0) && !Number.isFinite(oweFen)) {
+    for (const data of detail?.items || []) {
+      for (const item of data.items || []) {
+        if (item.unitTypeId == 0) {
+          const bal = parseFloat(item.balanceAmount);
+          const used = parseFloat(item.usageAmount);
+          if (Number.isFinite(bal) && bal !== 0) {
+            availableFen = bal;
+            break;
+          }
+          if (Number.isFinite(used) && used !== 0) {
+            // 有些返回 usage 表示已产生费用
+            oweFen = Math.abs(used);
+          }
+        }
+      }
+      if (Number.isFinite(availableFen) && availableFen !== 0) break;
+    }
+  }
+
   let feeTitle = '剩余话费';
   let feeYuan = '0.00';
   let feeColor = COLORS.fee;
 
   if (Number.isFinite(availableFen) && availableFen < 0) {
-    // 可用余额为负 → 欠费
     feeTitle = '当前欠费';
     feeYuan = (Math.abs(availableFen) / 100).toFixed(2);
     feeColor = COLORS.error;
   } else if (Number.isFinite(oweFen) && oweFen > 0) {
-    // 有明确欠费字段
     feeTitle = '当前欠费';
     feeYuan = (oweFen / 100).toFixed(2);
     feeColor = COLORS.error;
-  } else if (Number.isFinite(availableFen)) {
+  } else if (Number.isFinite(availableFen) && availableFen !== 0) {
     feeTitle = '剩余话费';
     feeYuan = (availableFen / 100).toFixed(2);
+    feeColor = COLORS.fee;
+  } else {
+    // 接口只返回 0 时，后付费欠费账号很常见，标题改为提示
+    feeTitle = '账户余额';
+    feeYuan = '0.00';
     feeColor = COLORS.fee;
   }
 
@@ -667,7 +692,7 @@ function buildMainWidget(title, ds) {
     backgroundColor: COLORS.bg,
     padding: [10, 14, 10, 14],
     gap: 10,
-    refreshAfter: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    refreshAfter: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     children: [
       headerRow(title, ds),
       {
@@ -775,7 +800,7 @@ function buildSmall(title, ds) {
     backgroundColor: COLORS.bg,
     padding: [10, 12, 10, 12],
     gap: 8,
-    refreshAfter: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    refreshAfter: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     children,
   };
 }
