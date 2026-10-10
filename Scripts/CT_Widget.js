@@ -117,24 +117,52 @@ async function refreshCookie(ctx) {
 
   const url = (loginUrl.match(/(http.+)&sign/) || [])[1] || loginUrl;
 
-  const resp = await ctx.http.get(url, {
-    redirect: 'manual',
-    timeout: 15000,
-    credentials: 'omit',
-  });
+  try {
+    const resp = await ctx.http.get(url, {
+      redirect: 'manual',
+      timeout: 15000,
+      credentials: 'omit',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      },
+    });
 
-  const setCookies =
-    (resp.headers &&
-      resp.headers.getAll &&
-      resp.headers.getAll('set-cookie')) ||
-    [];
+    // 收集所有 set-cookie
+    let setCookies = [];
+    if (resp.headers) {
+      if (typeof resp.headers.getAll === 'function') {
+        setCookies = resp.headers.getAll('set-cookie') || [];
+      } else if (typeof resp.headers.get === 'function') {
+        const single = resp.headers.get('set-cookie');
+        if (single) setCookies = [single];
+      }
+    }
 
-  const pairs = setCookies
-    .map((c) => String(c).split(';')[0].trim())
-    .filter(Boolean);
+    const pairs = setCookies
+      .map((c) => String(c).split(';')[0].trim())
+      .filter(Boolean);
 
-  if (pairs.length > 0) {
-    ctx.storage.set('ct_cookie', pairs.join('; '));
+    if (pairs.length > 0) {
+      // 合并旧 cookie，新值覆盖同名
+      const old = ctx.storage.get('ct_cookie') || '';
+      const map = {};
+      old.split(';').forEach((p) => {
+        const [k, ...rest] = p.trim().split('=');
+        if (k) map[k.trim()] = rest.join('=').trim();
+      });
+      pairs.forEach((p) => {
+        const [k, ...rest] = p.split('=');
+        if (k) map[k.trim()] = rest.join('=').trim();
+      });
+      const merged = Object.entries(map)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('; ');
+      ctx.storage.set('ct_cookie', merged);
+      ctx.storage.set('ct_cookie_ts', String(Date.now()));
+    }
+  } catch (e) {
+    // 刷新失败静默，继续用旧 cookie
   }
 
   return ctx.storage.get('ct_cookie') || '';
@@ -434,25 +462,49 @@ async function loadData(ctx) {
 
   const storedCookie = ctx.storage.get('ct_cookie') || '';
   const configured = !!(envCookie || loginUrl || storedCookie);
-  const firstCookie = envCookie || storedCookie;
+  let cookie = envCookie || storedCookie;
 
-  if (firstCookie) {
+  // 定期强制刷新：超过 6 小时就主动刷新一次（有 loginUrl 时）
+  const COOKIE_MAX_AGE = 6 * 60 * 60 * 1000;
+  const cookieTs = Number(ctx.storage.get('ct_cookie_ts') || 0);
+  const needRefresh =
+    !envCookie &&
+    !!loginUrl &&
+    (!cookie || Date.now() - cookieTs > COOKIE_MAX_AGE);
+
+  if (needRefresh) {
     try {
-      const ds = await tryCookie(ctx, firstCookie, settings);
-      return { configured, ds, fromCache: false };
+      const fresh = await refreshCookie(ctx);
+      if (fresh) cookie = fresh;
     } catch (e) {}
   }
 
+  // 先用当前 cookie 试
+  if (cookie) {
+    try {
+      const ds = await tryCookie(ctx, cookie, settings);
+      // 成功时顺便更新时间戳
+      if (!ctx.storage.get('ct_cookie_ts')) {
+        ctx.storage.set('ct_cookie_ts', String(Date.now()));
+      }
+      return { configured, ds, fromCache: false };
+    } catch (e) {
+      // cookie 失效，走刷新
+    }
+  }
+
+  // 失败则用 loginUrl 刷新后再试
   if (!envCookie && loginUrl) {
     try {
       const fresh = await refreshCookie(ctx);
-      if (fresh && fresh !== firstCookie) {
+      if (fresh) {
         const ds = await tryCookie(ctx, fresh, settings);
         return { configured, ds, fromCache: false };
       }
     } catch (e) {}
   }
 
+  // 最终回退缓存
   const cached = ctx.storage.getJSON('ct_datasource');
   return {
     configured,
@@ -871,6 +923,7 @@ async function handleCapture(ctx) {
   if (!cookie || ctx.storage.get('ct_cookie') === cookie) return;
 
   ctx.storage.set('ct_cookie', cookie);
+  ctx.storage.set('ct_cookie_ts', String(Date.now()));
 
   const ts = Number(ctx.storage.get('ct_login_ts') || 0);
   if (Date.now() - ts < 10 * 60 * 1000) {
