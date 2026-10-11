@@ -105,6 +105,53 @@ function isDirectional(name = '') {
   return /定向/.test(name);
 }
 
+const UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
+// 合并 cookie 字符串：新值覆盖同名 key
+function mergeCookieString(oldStr, newStr) {
+  const map = {};
+  const apply = (s) => {
+    String(s || '')
+      .split(';')
+      .forEach((p) => {
+        const t = p.trim();
+        if (!t) return;
+        const i = t.indexOf('=');
+        if (i <= 0) return;
+        const k = t.slice(0, i).trim();
+        const v = t.slice(i + 1).trim();
+        if (k) map[k] = v;
+      });
+  };
+  apply(oldStr);
+  apply(newStr);
+  return Object.entries(map)
+    .map(([k, v]) => `${k}=${v}`)
+    .join('; ');
+}
+
+function extractSetCookies(resp) {
+  if (!resp || !resp.headers) return [];
+  if (typeof resp.headers.getAll === 'function') {
+    return resp.headers.getAll('set-cookie') || [];
+  }
+  if (typeof resp.headers.get === 'function') {
+    const single = resp.headers.get('set-cookie');
+    return single ? [single] : [];
+  }
+  return [];
+}
+
+function saveCookie(ctx, cookieStr) {
+  if (!cookieStr || !cookieStr.trim()) return ctx.storage.get('ct_cookie') || '';
+  const merged = mergeCookieString(ctx.storage.get('ct_cookie') || '', cookieStr);
+  ctx.storage.set('ct_cookie', merged);
+  ctx.storage.set('ct_cookie_ts', String(Date.now()));
+  return merged;
+}
+
+// 用 loginUrl 换新 cookie（核心保活）
 async function refreshCookie(ctx) {
   const loginUrl =
     (ctx.env.CT_LOGIN_URL || '').trim() ||
@@ -118,68 +165,111 @@ async function refreshCookie(ctx) {
   const url = (loginUrl.match(/(http.+)&sign/) || [])[1] || loginUrl;
 
   try {
+    // 1) 先 manual，拿 set-cookie
     const resp = await ctx.http.get(url, {
       redirect: 'manual',
       timeout: 15000,
       credentials: 'omit',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-      },
+      headers: { 'User-Agent': UA },
     });
 
-    // 收集所有 set-cookie
-    let setCookies = [];
-    if (resp.headers) {
-      if (typeof resp.headers.getAll === 'function') {
-        setCookies = resp.headers.getAll('set-cookie') || [];
-      } else if (typeof resp.headers.get === 'function') {
-        const single = resp.headers.get('set-cookie');
-        if (single) setCookies = [single];
-      }
-    }
-
-    const pairs = setCookies
+    const pairs = extractSetCookies(resp)
       .map((c) => String(c).split(';')[0].trim())
       .filter(Boolean);
 
     if (pairs.length > 0) {
-      // 合并旧 cookie，新值覆盖同名
-      const old = ctx.storage.get('ct_cookie') || '';
-      const map = {};
-      old.split(';').forEach((p) => {
-        const [k, ...rest] = p.trim().split('=');
-        if (k) map[k.trim()] = rest.join('=').trim();
-      });
-      pairs.forEach((p) => {
-        const [k, ...rest] = p.split('=');
-        if (k) map[k.trim()] = rest.join('=').trim();
-      });
-      const merged = Object.entries(map)
-        .map(([k, v]) => `${k}=${v}`)
-        .join('; ');
-      ctx.storage.set('ct_cookie', merged);
-      ctx.storage.set('ct_cookie_ts', String(Date.now()));
+      saveCookie(ctx, pairs.join('; '));
+    }
+
+    // 2) 若有 Location，再跟一次（部分登录链需要）
+    let location = null;
+    if (resp.headers) {
+      if (typeof resp.headers.get === 'function') {
+        location = resp.headers.get('location') || resp.headers.get('Location');
+      }
+    }
+    if (location) {
+      try {
+        const abs = location.startsWith('http')
+          ? location
+          : `https://e.dlife.cn${location.startsWith('/') ? '' : '/'}${location}`;
+        const resp2 = await ctx.http.get(abs, {
+          redirect: 'manual',
+          timeout: 12000,
+          credentials: 'omit',
+          headers: {
+            'User-Agent': UA,
+            Cookie: ctx.storage.get('ct_cookie') || '',
+          },
+        });
+        const pairs2 = extractSetCookies(resp2)
+          .map((c) => String(c).split(';')[0].trim())
+          .filter(Boolean);
+        if (pairs2.length > 0) {
+          saveCookie(ctx, pairs2.join('; '));
+        }
+      } catch (e) {}
     }
   } catch (e) {
-    // 刷新失败静默，继续用旧 cookie
+    // 静默
   }
+
+  // 3) 再用当前 cookie 访问首页，续期 session
+  try {
+    const cookie = ctx.storage.get('ct_cookie') || '';
+    if (cookie) {
+      const warm = await ctx.http.get(URLS.login, {
+        redirect: 'manual',
+        timeout: 10000,
+        credentials: 'omit',
+        headers: { 'User-Agent': UA, Cookie: cookie },
+      });
+      const warmPairs = extractSetCookies(warm)
+        .map((c) => String(c).split(';')[0].trim())
+        .filter(Boolean);
+      if (warmPairs.length > 0) {
+        saveCookie(ctx, warmPairs.join('; '));
+      }
+    }
+  } catch (e) {}
 
   return ctx.storage.get('ct_cookie') || '';
 }
 
 async function fetchJson(ctx, url, cookie) {
   const resp = await ctx.http.get(url, {
-    headers: { Cookie: cookie },
+    headers: {
+      Cookie: cookie,
+      'User-Agent': UA,
+      Accept: 'application/json, text/plain, */*',
+      Referer: 'https://e.dlife.cn/',
+    },
     timeout: 15000,
     credentials: 'omit',
   });
 
+  // 登录失效常见：302 / 401 / 非 200
+  if (!resp || resp.status === 401 || resp.status === 403) {
+    throw new Error(`AUTH ${resp.status}: ${url}`);
+  }
   if (!resp || resp.status !== 200) {
     throw new Error(`HTTP ${resp ? resp.status : 'no-response'}: ${url}`);
   }
 
-  return await resp.json();
+  // 响应里若带 set-cookie，顺手续期
+  const pairs = extractSetCookies(resp)
+    .map((c) => String(c).split(';')[0].trim())
+    .filter(Boolean);
+  if (pairs.length > 0) {
+    saveCookie(ctx, pairs.join('; '));
+  }
+
+  const json = await resp.json();
+  // 部分接口未登录会返回 result != 0
+  if (json && (json.result === -1 || json.result === '-1' || json.result === 30015)) {
+    throw new Error(`API auth fail: ${url}`);
+  }
+  return json;
 }
 
 function parseTelecom(detail, balance, opts) {
@@ -489,47 +579,48 @@ async function loadData(ctx) {
   const configured = !!(envCookie || loginUrl || storedCookie);
   let cookie = envCookie || storedCookie;
 
-  // 定期强制刷新：超过 6 小时就主动刷新一次（有 loginUrl 时）
-  const COOKIE_MAX_AGE = 6 * 60 * 60 * 1000;
+  // 超过 2 小时强制用 loginUrl 续期（有 loginUrl 时）
+  const COOKIE_MAX_AGE = 2 * 60 * 60 * 1000;
   const cookieTs = Number(ctx.storage.get('ct_cookie_ts') || 0);
-  const needRefresh =
-    !envCookie &&
-    !!loginUrl &&
-    (!cookie || Date.now() - cookieTs > COOKIE_MAX_AGE);
+  const age = Date.now() - cookieTs;
+  const shouldPreRefresh =
+    !envCookie && !!loginUrl && (!cookie || age > COOKIE_MAX_AGE);
 
-  if (needRefresh) {
+  if (shouldPreRefresh) {
     try {
       const fresh = await refreshCookie(ctx);
       if (fresh) cookie = fresh;
     } catch (e) {}
   }
 
-  // 先用当前 cookie 试
+  // 尝试当前 cookie
   if (cookie) {
     try {
       const ds = await tryCookie(ctx, cookie, settings);
-      // 成功时顺便更新时间戳
-      if (!ctx.storage.get('ct_cookie_ts')) {
-        ctx.storage.set('ct_cookie_ts', String(Date.now()));
-      }
+      ctx.storage.set('ct_cookie_ts', String(Date.now()));
+      ctx.storage.set('ct_last_ok', String(Date.now()));
       return { configured, ds, fromCache: false };
     } catch (e) {
-      // cookie 失效，走刷新
+      // 失效 → 刷新
     }
   }
 
-  // 失败则用 loginUrl 刷新后再试
+  // 失败：loginUrl 刷新后重试（最多 2 次）
   if (!envCookie && loginUrl) {
-    try {
-      const fresh = await refreshCookie(ctx);
-      if (fresh) {
+    for (let i = 0; i < 2; i++) {
+      try {
+        const fresh = await refreshCookie(ctx);
+        if (!fresh) break;
         const ds = await tryCookie(ctx, fresh, settings);
+        ctx.storage.set('ct_last_ok', String(Date.now()));
         return { configured, ds, fromCache: false };
+      } catch (e) {
+        // 再刷一次
       }
-    } catch (e) {}
+    }
   }
 
-  // 最终回退缓存
+  // 回退缓存（过期数据也比空白好）
   const cached = ctx.storage.getJSON('ct_datasource');
   return {
     configured,
@@ -933,31 +1024,37 @@ async function handleCapture(ctx) {
   const req = ctx.request || {};
   const url = req.url || '';
 
-  if (!url.includes('e.dlife.cn')) return;
+  if (!url.includes('e.dlife.cn') && !url.includes('e.189.cn')) return;
 
-  if (url.includes('/user/loginMiddle')) {
+  // 捕获登录中间页 → 保存可续期的 loginUrl
+  if (url.includes('/user/loginMiddle') || url.includes('loginMiddle')) {
     const loginUrl = (url.match(/(http.+)&sign/) || [])[1] || url;
-    if (loginUrl && ctx.storage.get('ct_login_url') !== loginUrl) {
+    if (loginUrl) {
       ctx.storage.set('ct_login_url', loginUrl);
+      ctx.storage.set('ct_login_ts', String(Date.now()));
     }
-    ctx.storage.set('ct_login_ts', String(Date.now()));
-    return;
   }
 
+  // 任意访问都合并请求里的 Cookie（全站保活）
   const cookie = String(getReqCookie(req.headers) || '').trim();
-  if (!cookie || ctx.storage.get('ct_cookie') === cookie) return;
-
-  ctx.storage.set('ct_cookie', cookie);
-  ctx.storage.set('ct_cookie_ts', String(Date.now()));
-
-  const ts = Number(ctx.storage.get('ct_login_ts') || 0);
-  if (Date.now() - ts < 10 * 60 * 1000) {
-    ctx.storage.delete('ct_login_ts');
-    ctx.notify({
-      title: '中国电信',
-      body: '登录成功，小组件将自动更新',
-      action: { type: 'clipboard', text: cookie },
-    });
+  if (cookie) {
+    const before = ctx.storage.get('ct_cookie') || '';
+    const merged = saveCookie(ctx, cookie);
+    const ts = Number(ctx.storage.get('ct_login_ts') || 0);
+    // 登录后 10 分钟内首次写入 → 通知成功
+    if (
+      merged &&
+      merged !== before &&
+      ts > 0 &&
+      Date.now() - ts < 10 * 60 * 1000
+    ) {
+      ctx.storage.delete('ct_login_ts');
+      ctx.notify({
+        title: '中国电信',
+        body: '登录成功，Cookie 已保存，小组件将自动更新',
+        action: { type: 'clipboard', text: merged },
+      });
+    }
   }
 }
 
