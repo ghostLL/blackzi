@@ -430,16 +430,17 @@ function showDirectCard(ctx, ds) {
   return !!ds.hasDirectFlow;
 }
 
-/** 美化卡片：图标 + 标题 + 数值 */
+/** 美化卡片：图标 + 标题 + 数值(单位) */
 function prettyCard(icon, color, data, compact) {
+  const numText = `${data.number ?? '0'}${data.unit ? ' ' + data.unit : ''}`;
   return {
     type: 'stack',
     direction: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    gap: compact ? 2 : 4,
-    padding: compact ? [6, 6, 6, 6] : [8, 8, 8, 8],
+    gap: compact ? 2 : 3,
+    padding: compact ? [8, 6, 8, 6] : [10, 8, 10, 8],
     backgroundColor: COLORS.cardBg,
     borderRadius: 12,
     borderWidth: 1,
@@ -448,42 +449,64 @@ function prettyCard(icon, color, data, compact) {
       {
         type: 'image',
         src: `sf-symbol:${icon}`,
-        width: compact ? 18 : 26,
-        height: compact ? 18 : 26,
+        width: compact ? 16 : 22,
+        height: compact ? 16 : 22,
         color: color || data.color || COLORS.flowDom,
       },
       {
         type: 'text',
         text: data.title,
         font: { size: 'caption2', weight: 'medium' },
-        opacity: 0.7,
+        opacity: 0.65,
         maxLines: 1,
-        minScale: 0.75,
+        minScale: 0.8,
       },
       {
-        type: 'stack',
-        direction: 'row',
-        alignItems: 'center',
-        gap: 2,
-        children: [
-          {
-            type: 'text',
-            text: String(data.number ?? '0'),
-            font: {
-              size: compact ? 'footnote' : 'title2',
-              weight: 'bold',
-            },
-            maxLines: 1,
-            minScale: 0.65,
-          },
-          {
-            type: 'text',
-            text: data.unit || '',
-            font: { size: 'caption2' },
-            opacity: 0.55,
-            maxLines: 1,
-          },
-        ],
+        type: 'text',
+        text: numText,
+        font: {
+          size: compact ? 'footnote' : 'body',
+          weight: 'bold',
+        },
+        maxLines: 1,
+        minScale: 0.7,
+      },
+    ],
+  };
+}
+
+/** 话费横条（整行） */
+function feeBar(ds) {
+  return {
+    type: 'stack',
+    direction: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: [10, 12, 10, 12],
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    children: [
+      {
+        type: 'image',
+        src: `sf-symbol:${ICONS.fee}`,
+        width: 20,
+        height: 20,
+        color: ds.fee.color || COLORS.fee,
+      },
+      {
+        type: 'text',
+        text: ds.fee.title,
+        font: { size: 'caption1', weight: 'medium' },
+        opacity: 0.65,
+      },
+      {
+        type: 'text',
+        text: `${ds.fee.number} ${ds.fee.unit}`,
+        font: { size: 'title2', weight: 'bold' },
+        color: ds.fee.color || COLORS.fee,
       },
     ],
   };
@@ -526,26 +549,23 @@ function headerRow(title, ds, fromCache, cookieDead) {
 }
 
 function buildMedium(title, ds, fromCache, ctx, cookieDead) {
-  const cards = [];
-
-  // 第一行：话费 + 国内语音 + (本地语音)
-  const row1 = [
-    prettyCard(ICONS.fee, ds.fee.color || COLORS.fee, ds.fee, false),
-    prettyCard(ICONS.voiceDom, COLORS.voiceDom, ds.voiceDomestic, false),
-  ];
-  if (ds.voiceLocal) {
-    row1.push(prettyCard(ICONS.voiceLocal, COLORS.voiceLocal, ds.voiceLocal, false));
-  }
-
-  // 第二行：国内流量 + (本地流量) + (定向)
-  const row2 = [
+  // 上行：国内流量 + 本地流量（无本地则单卡）
+  const flowRow = [
     prettyCard(ICONS.flowDom, COLORS.flowDom, ds.flowDomestic, false),
   ];
   if (ds.flowLocal) {
-    row2.push(prettyCard(ICONS.flowLocal, COLORS.flowLocal, ds.flowLocal, false));
+    flowRow.push(prettyCard(ICONS.flowLocal, COLORS.flowLocal, ds.flowLocal, false));
   }
   if (showDirectCard(ctx, ds) && ds.flowDirect) {
-    row2.push(prettyCard(ICONS.direct, COLORS.direct, ds.flowDirect, false));
+    flowRow.push(prettyCard(ICONS.direct, COLORS.direct, ds.flowDirect, false));
+  }
+
+  // 下行：国内语音 + 本地语音
+  const voiceRow = [
+    prettyCard(ICONS.voiceDom, COLORS.voiceDom, ds.voiceDomestic, false),
+  ];
+  if (ds.voiceLocal) {
+    voiceRow.push(prettyCard(ICONS.voiceLocal, COLORS.voiceLocal, ds.voiceLocal, false));
   }
 
   return {
@@ -555,17 +575,18 @@ function buildMedium(title, ds, fromCache, ctx, cookieDead) {
     refreshAfter: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     children: [
       headerRow(title, ds, fromCache, cookieDead),
+      feeBar(ds),
       {
         type: 'stack',
         direction: 'row',
         gap: 8,
-        children: row1,
+        children: flowRow,
       },
       {
         type: 'stack',
         direction: 'row',
         gap: 8,
-        children: row2,
+        children: voiceRow,
       },
     ],
   };
