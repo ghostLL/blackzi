@@ -430,7 +430,56 @@ function showDirectCard(ctx, ds) {
   return !!ds.hasDirectFlow;
 }
 
-/** 美化卡片：图标 + 标题 + 数值(单位) */
+/**
+ * 中等尺寸专用：横向紧凑卡（左图标 + 右标题/数值）
+ * 节省垂直空间，避免 2×2 在中等高度里重叠
+ */
+function mediumCell(icon, color, data) {
+  const numText = `${data.number ?? '0'}${data.unit ? data.unit : ''}`;
+  return {
+    type: 'stack',
+    direction: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+    padding: [8, 10, 8, 10],
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 12,
+    children: [
+      {
+        type: 'image',
+        src: `sf-symbol:${icon}`,
+        width: 22,
+        height: 22,
+        color: color || data.color || COLORS.flowDom,
+      },
+      {
+        type: 'stack',
+        direction: 'column',
+        alignItems: 'center',
+        gap: 1,
+        children: [
+          {
+            type: 'text',
+            text: data.title,
+            font: { size: 'caption2', weight: 'medium' },
+            opacity: 0.55,
+            maxLines: 1,
+          },
+          {
+            type: 'text',
+            text: numText,
+            font: { size: 'body', weight: 'bold' },
+            maxLines: 1,
+            minScale: 0.7,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** 小尺寸竖向卡 */
 function prettyCard(icon, color, data, compact) {
   const numText = `${data.number ?? '0'}${data.unit ? ' ' + data.unit : ''}`;
   return {
@@ -439,16 +488,16 @@ function prettyCard(icon, color, data, compact) {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    gap: compact ? 3 : 5,
-    padding: compact ? [10, 8, 10, 8] : [14, 10, 14, 10],
+    gap: 2,
+    padding: [8, 6, 8, 6],
     backgroundColor: COLORS.cardBg,
-    borderRadius: 16,
+    borderRadius: 12,
     children: [
       {
         type: 'image',
         src: `sf-symbol:${icon}`,
-        width: compact ? 18 : 24,
-        height: compact ? 18 : 24,
+        width: 16,
+        height: 16,
         color: color || data.color || COLORS.flowDom,
       },
       {
@@ -462,49 +511,9 @@ function prettyCard(icon, color, data, compact) {
       {
         type: 'text',
         text: numText,
-        font: {
-          size: compact ? 'footnote' : 'body',
-          weight: 'bold',
-        },
+        font: { size: 'footnote', weight: 'bold' },
         maxLines: 1,
-        minScale: 0.75,
-      },
-    ],
-  };
-}
-
-/** 话费横条（整行） */
-function feeBar(ds) {
-  return {
-    type: 'stack',
-    direction: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: [10, 12, 10, 12],
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    children: [
-      {
-        type: 'image',
-        src: `sf-symbol:${ICONS.fee}`,
-        width: 20,
-        height: 20,
-        color: ds.fee.color || COLORS.fee,
-      },
-      {
-        type: 'text',
-        text: ds.fee.title,
-        font: { size: 'caption1', weight: 'medium' },
-        opacity: 0.65,
-      },
-      {
-        type: 'text',
-        text: `${ds.fee.number} ${ds.fee.unit}`,
-        font: { size: 'title2', weight: 'bold' },
-        color: ds.fee.color || COLORS.fee,
+        minScale: 0.7,
       },
     ],
   };
@@ -554,42 +563,40 @@ function headerRow(title, ds, fromCache, cookieDead) {
 }
 
 function buildMedium(title, ds, fromCache, ctx, cookieDead) {
-  // 严格 2×2，避免三列挤压和高度裁切
-  // 上排：国内流量 | 本地流量
-  // 下排：国内语音 | 本地语音
+  // 横向紧凑 2×2，适配中等小组件高度
   const flowRow = [
-    prettyCard(ICONS.flowDom, COLORS.flowDom, ds.flowDomestic, false),
+    mediumCell(ICONS.flowDom, COLORS.flowDom, ds.flowDomestic),
   ];
   if (ds.flowLocal) {
-    flowRow.push(prettyCard(ICONS.flowLocal, COLORS.flowLocal, ds.flowLocal, false));
+    flowRow.push(mediumCell(ICONS.flowLocal, COLORS.flowLocal, ds.flowLocal));
   } else if (showDirectCard(ctx, ds) && ds.flowDirect) {
-    flowRow.push(prettyCard(ICONS.direct, COLORS.direct, ds.flowDirect, false));
+    flowRow.push(mediumCell(ICONS.direct, COLORS.direct, ds.flowDirect));
   }
 
   const voiceRow = [
-    prettyCard(ICONS.voiceDom, COLORS.voiceDom, ds.voiceDomestic, false),
+    mediumCell(ICONS.voiceDom, COLORS.voiceDom, ds.voiceDomestic),
   ];
   if (ds.voiceLocal) {
-    voiceRow.push(prettyCard(ICONS.voiceLocal, COLORS.voiceLocal, ds.voiceLocal, false));
+    voiceRow.push(mediumCell(ICONS.voiceLocal, COLORS.voiceLocal, ds.voiceLocal));
   }
 
   return {
     type: 'widget',
-    padding: [12, 14, 12, 14],
-    gap: 10,
+    padding: [10, 12, 10, 12],
+    gap: 8,
     refreshAfter: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     children: [
       headerRow(title, ds, fromCache, cookieDead),
       {
         type: 'stack',
         direction: 'row',
-        gap: 10,
+        gap: 8,
         children: flowRow,
       },
       {
         type: 'stack',
         direction: 'row',
-        gap: 10,
+        gap: 8,
         children: voiceRow,
       },
     ],
