@@ -1,5 +1,5 @@
 name: 中国电信小组件
-description: 中国电信 话费 语音 流量小组件（优化版·区分国内/本地·增强保活）
+description: 中国电信 话费 语音 流量小组件（定时保活版）
 author: iBL3ND (optimized)
 icon: https://iili.io/nEufFXR.png
 compat_arguments:
@@ -7,22 +7,27 @@ compat_arguments:
 compat_arguments_schema:
   ctCapture:
     name: 中国电信数据抓取
-    description: 用 Safari 打开 https://e.dlife.cn 登录一次即可（抓到后可关掉，建议保持开启以便自动续 Cookie）
+    description: 用 Safari 打开 https://e.dlife.cn 登录一次。建议保持开启，便于自动续 Cookie
     default_value: 'true'
     options:
     - 'true'
     - 'false'
 dns: {}
 scriptings:
+# 小组件渲染
 - generic:
     name: china-telecom
-    # 请改成你托管的 CT_Widget.js raw 地址
     script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget.js
+# 访问 e.dlife.cn 时自动捕获 / 合并 Cookie
 - http_request:
     name: 中国电信自动捕获
-    # 访问 e.dlife.cn 任意页面都会合并 Cookie，实现保活
     match: '^https://e\.dli[^{{{ctCapture}}}]e\.cn/'
-    # 与小组件共用同一脚本（内含 handleCapture）
+    script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget.js
+# 关键保活：每 30 分钟主动拉一次接口续 session（关键）
+- schedule:
+    name: 中国电信定时保活
+    cron: '*/30 * * * *'
+    timeout: 60
     script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget.js
 mitm:
   hostnames:
