@@ -579,8 +579,8 @@ async function loadData(ctx) {
   const configured = !!(envCookie || loginUrl || storedCookie);
   let cookie = envCookie || storedCookie;
 
-  // 超过 2 小时强制用 loginUrl 续期（有 loginUrl 时）
-  const COOKIE_MAX_AGE = 2 * 60 * 60 * 1000;
+  // 超过 30 分钟强制用 loginUrl 续期（有 loginUrl 时）
+  const COOKIE_MAX_AGE = 30 * 60 * 1000;
   const cookieTs = Number(ctx.storage.get('ct_cookie_ts') || 0);
   const age = Date.now() - cookieTs;
   const shouldPreRefresh =
@@ -1093,8 +1093,28 @@ async function handleWidget(ctx) {
 }
 
 export default async function (ctx) {
+  // request 脚本：捕获 Cookie / loginUrl
   if (ctx.request && ctx.request.url) {
     return handleCapture(ctx);
+  }
+  // schedule 定时任务：无 widgetFamily，只拉数据续 session
+  if (!ctx.widgetFamily) {
+    try {
+      await loadData(ctx);
+      // 额外用当前 cookie 访问首页，进一步续期
+      const cookie = ctx.storage.get('ct_cookie') || '';
+      if (cookie) {
+        try {
+          await ctx.http.get(URLS.login, {
+            redirect: 'manual',
+            timeout: 10000,
+            credentials: 'omit',
+            headers: { 'User-Agent': UA, Cookie: cookie },
+          });
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return { type: 'text', text: 'keepalive ok' };
   }
   return handleWidget(ctx);
 }
