@@ -515,11 +515,12 @@ function feeBar(ds) {
 function headerRow(title, ds, fromCache, cookieDead) {
   const t = ds && ds.updatedAt ? fmtTime(ds.updatedAt) : '--:--';
   const dotColor = cookieDead ? COLORS.warn : fromCache ? COLORS.cache : COLORS.ok;
+  const feeText = `¥${ds?.fee?.number ?? '0.00'}`;
   return {
     type: 'stack',
     direction: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     children: [
       {
         type: 'image',
@@ -533,11 +534,17 @@ function headerRow(title, ds, fromCache, cookieDead) {
         text: title,
         font: { size: 'footnote', weight: 'semibold' },
       },
+      {
+        type: 'text',
+        text: feeText,
+        font: { size: 'footnote', weight: 'bold' },
+        color: ds?.fee?.color || COLORS.fee,
+      },
       { type: 'spacer' },
       {
         type: 'text',
         text: cookieDead
-          ? '登录失效，点我重登'
+          ? '登录失效'
           : fromCache
             ? `缓存 ${t}`
             : `更新 ${t}`,
@@ -549,18 +556,18 @@ function headerRow(title, ds, fromCache, cookieDead) {
 }
 
 function buildMedium(title, ds, fromCache, ctx, cookieDead) {
-  // 上行：国内流量 + 本地流量（无本地则单卡）
+  // 严格 2×2，避免三列挤压和高度裁切
+  // 上排：国内流量 | 本地流量
+  // 下排：国内语音 | 本地语音
   const flowRow = [
     prettyCard(ICONS.flowDom, COLORS.flowDom, ds.flowDomestic, false),
   ];
   if (ds.flowLocal) {
     flowRow.push(prettyCard(ICONS.flowLocal, COLORS.flowLocal, ds.flowLocal, false));
-  }
-  if (showDirectCard(ctx, ds) && ds.flowDirect) {
+  } else if (showDirectCard(ctx, ds) && ds.flowDirect) {
     flowRow.push(prettyCard(ICONS.direct, COLORS.direct, ds.flowDirect, false));
   }
 
-  // 下行：国内语音 + 本地语音
   const voiceRow = [
     prettyCard(ICONS.voiceDom, COLORS.voiceDom, ds.voiceDomestic, false),
   ];
@@ -570,12 +577,11 @@ function buildMedium(title, ds, fromCache, ctx, cookieDead) {
 
   return {
     type: 'widget',
-    padding: 12,
+    padding: [10, 12, 10, 12],
     gap: 8,
     refreshAfter: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     children: [
       headerRow(title, ds, fromCache, cookieDead),
-      feeBar(ds),
       {
         type: 'stack',
         direction: 'row',
