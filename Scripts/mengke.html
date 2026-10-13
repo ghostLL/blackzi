@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="奇妙萌可猜猜看">
+<title>奇妙萌可猜猜看</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  body {
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(180deg, #ffe6f0 0%, #e6f7ff 50%, #fff0e6 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px;
+    overflow-x: hidden;
+  }
+
+  .header {
+    width: 100%;
+    max-width: 500px;
+    text-align: center;
+    padding: 10px 0;
+  }
+
+  .title {
+    font-size: 28px;
+    font-weight: bold;
+    color: #ff6b9d;
+    text-shadow: 2px 2px 0 #fff, 3px 3px 0 #ffb6c1;
+    margin-bottom: 5px;
+  }
+
+  .score-box {
+    background: #fff;
+    border-radius: 50px;
+    padding: 8px 25px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 15px rgba(255, 107, 157, 0.3);
+    font-size: 22px;
+    font-weight: bold;
+    color: #ff6b9d;
+  }
+
+  .score-icon {
+    font-size: 26px;
+  }
+
+  .game-area {
+    width: 100%;
+    max-width: 500px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+  }
+
+  .shadow-container {
+    width: 220px;
+    height: 220px;
+    background: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    position: relative;
+    overflow: hidden;
+    border: 6px solid #ffb6c1;
+  }
+
+  .shadow-img {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 90px;
+    filter: brightness(0);
+    transition: all 0.5s ease;
+  }
+
+  .shadow-img.revealed {
+    filter: brightness(1);
+    transform: scale(1.1);
+  }
+
+  .hint-text {
+    font-size: 18px;
+    color: #666;
+    margin-top: 5px;
+    text-align: center;
+  }
+
+  .options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+    max-width: 420px;
+    padding: 0 10px;
+  }
+
+  .option-btn {
+    background: linear-gradient(145deg, #fff, #ffe6f0);
+    border: 3px solid #ff9ec4;
+    border-radius: 20px;
+    padding: 16px 10px;
+    font-size: 20px;
+    font-weight: bold;
+    color: #d63384;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 10px rgba(255, 107, 157, 0.2);
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .option-btn:active {
+    transform: scale(0.95);
+    background: #ffd6e7;
+  }
+
+  .option-btn.correct {
+    background: linear-gradient(145deg, #d4edda, #a8e6cf);
+    border-color: #28a745;
+    color: #155724;
+  }
+
+  .option-btn.wrong {
+    background: linear-gradient(145deg, #f8d7da, #f5c6cb);
+    border-color: #dc3545;
+    color: #721c24;
+  }
+
+  /* 惩罚区 */
+  .punish-area {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+    max-width: 420px;
+    background: #fff8e6;
+    border-radius: 25px;
+    padding: 25px 20px;
+    box-shadow: 0 8px 25px rgba(255, 193, 7, 0.3);
+    border: 4px solid #ffc107;
+  }
+
+  .punish-title {
+    font-size: 24px;
+    color: #e67e22;
+    font-weight: bold;
+  }
+
+  .math-question {
+    font-size: 36px;
+    font-weight: bold;
+    color: #333;
+    background: #fff;
+    padding: 15px 30px;
+    border-radius: 15px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  }
+
+  .math-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  .math-btn {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #fff, #ffeaa7);
+    border: 3px solid #fdcb6e;
+    font-size: 28px;
+    font-weight: bold;
+    color: #d35400;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(253, 203, 110, 0.4);
+  }
+
+  .math-btn:active {
+    transform: scale(0.9);
+  }
+
+  /* 特效层 */
+  .effect-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .effect-text {
+    font-size: 48px;
+    font-weight: bold;
+    color: #ff6b9d;
+    text-shadow: 3px 3px 0 #fff, 5px 5px 10px rgba(0,0,0,0.2);
+    animation: popIn 0.6s ease;
+    opacity: 0;
+  }
+
+  .effect-text.show {
+    opacity: 1;
+  }
+
+  @keyframes popIn {
+    0% { transform: scale(0.3); opacity: 0; }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  .confetti {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    animation: fall 2s ease-out forwards;
+  }
+
+  @keyframes fall {
+    0% { transform: translateY(-50px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+  }
+
+  .footer {
+    width: 100%;
+    max-width: 500px;
+    text-align: center;
+    padding: 10px;
+    font-size: 14px;
+    color: #999;
+  }
+
+  .start-screen, .game-over-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, #ffe6f0 0%, #e6f7ff 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 20px;
+  }
+
+  .start-screen h1 {
+    font-size: 36px;
+    color: #ff6b9d;
+    text-shadow: 2px 2px 0 #fff;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  .start-btn {
+    background: linear-gradient(145deg, #ff6b9d, #ff8fab);
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 18px 50px;
+    font-size: 24px;
+    font-weight: bold;
+    box-shadow: 0 6px 20px rgba(255, 107, 157, 0.4);
+    cursor: pointer;
+    margin-top: 20px;
+  }
+
+  .start-btn:active {
+    transform: scale(0.95);
+  }
+
+  .how-to {
+    background: white;
+    border-radius: 20px;
+    padding: 20px;
+    max-width: 360px;
+    margin-top: 20px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    font-size: 16px;
+    line-height: 1.6;
+    color: #555;
+  }
+
+  .how-to h3 {
+    color: #ff6b9d;
+    margin-bottom: 10px;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  /* 大屏幕优化 */
+  @media (min-width: 600px) {
+    .shadow-container {
+      width: 260px;
+      height: 260px;
+    }
+    .shadow-img {
+      width: 190px;
+      height: 190px;
+      font-size: 110px;
+    }
+  }
+</style>
+</head>
+<body>
+  <!-- 开始界面 -->
+  <div id="startScreen" class="start-screen">
+    <h1>🌟 奇妙萌可猜猜看 🌟</h1>
+    <div style="font-size:80px; margin:10px;">🦄💖</div>
+    <div class="how-to">
+      <h3>怎么玩？</h3>
+      <p>1. 看黑色阴影，猜是哪只萌可</p>
+      <p>2. 猜对了 → 加1分，看漂亮特效！</p>
+      <p>3. 猜错了 → 做一道10以内加减法</p>
+      <p>4. 算对了就能继续玩哦～</p>
+    </div>
+    <button class="start-btn" onclick="startGame()">开始游戏 🎉</button>
+  </div>
+
+  <!-- 主游戏 -->
+  <div class="header">
+    <div class="title">奇妙萌可猜猜看</div>
+    <div class="score-box">
+      <span class="score-icon">⭐</span>
+      <span>得分：<span id="score">0</span></span>
+    </div>
+  </div>
+
+  <div class="game-area" id="gameArea">
+    <div class="shadow-container">
+      <div class="shadow-img" id="shadowImg">💖</div>
+    </div>
+    <div class="hint-text" id="hintText">这是哪只萌可的影子呢？</div>
+    <div class="options" id="options"></div>
+  </div>
+
+  <!-- 惩罚区域 -->
+  <div class="punish-area" id="punishArea">
+    <div class="punish-title">😢 猜错了！先算算这道题吧</div>
+    <div class="math-question" id="mathQuestion">3 + 5 = ?</div>
+    <div class="math-options" id="mathOptions"></div>
+  </div>
+
+  <div class="footer">专为小朋友设计 · 奇妙萌可主题</div>
+
+  <!-- 特效层 -->
+  <div class="effect-overlay" id="effectOverlay">
+    <div class="effect-text" id="effectText"></div>
+  </div>
+
+  <script>
+    // 萌可数据（简化可爱版本，使用emoji代表形象）
+    const mengkes = [
+      { name: "爱心萌可", emoji: "💖", color: "#ff6b9d" },
+      { name: "正正萌可", emoji: "📚", color: "#74b9ff" },
+      { name: "勇气萌可", emoji: "⭐", color: "#fdcb6e" },
+      { name: "淘气萌可", emoji: "🍭", color: "#a29bfe" },
+      { name: "幸福萌可", emoji: "🌈", color: "#55efc4" },
+      { name: "唱唱萌可", emoji: "🎵", color: "#fd79a8" },
+      { name: "盼盼萌可", emoji: "✨", color: "#ffeaa7" },
+      { name: "乖乖萌可", emoji: "🌸", color: "#fab1a0" }
+    ];
+
+    let score = 0;
+    let currentMengke = null;
+    let isPunishing = false;
+
+    function startGame() {
+      document.getElementById('startScreen').classList.add('hidden');
+      score = 0;
+      updateScore();
+      nextRound();
+    }
+
+    function updateScore() {
+      document.getElementById('score').textContent = score;
+    }
+
+    function nextRound() {
+      isPunishing = false;
+      document.getElementById('punishArea').style.display = 'none';
+      document.getElementById('gameArea').style.display = 'flex';
+
+      // 随机选一只萌可
+      currentMengke = mengkes[Math.floor(Math.random() * mengkes.length)];
+
+      // 显示阴影（黑色）
+      const shadowImg = document.getElementById('shadowImg');
+      shadowImg.textContent = currentMengke.emoji;
+      shadowImg.classList.remove('revealed');
+      shadowImg.style.filter = 'brightness(0)';
+
+      document.getElementById('hintText').textContent = '这是哪只萌可的影子呢？';
+
+      // 生成选项（正确答案 + 3个干扰项）
+      let options = [currentMengke];
+      while (options.length < 4) {
+        const random = mengkes[Math.floor(Math.random() * mengkes.length)];
+        if (!options.find(o => o.name === random.name)) {
+          options.push(random);
+        }
+      }
+      // 打乱顺序
+      options = options.sort(() => Math.random() - 0.5);
+
+      const optionsDiv = document.getElementById('options');
+      optionsDiv.innerHTML = '';
+      options.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.textContent = opt.name;
+        btn.onclick = () => checkAnswer(opt.name, btn);
+        optionsDiv.appendChild(btn);
+      });
+    }
+
+    function checkAnswer(selectedName, btn) {
+      if (isPunishing) return;
+
+      // 禁用所有按钮
+      const allBtns = document.querySelectorAll('.option-btn');
+      allBtns.forEach(b => b.onclick = null);
+
+      if (selectedName === currentMengke.name) {
+        // 猜对
+        btn.classList.add('correct');
+        document.getElementById('shadowImg').classList.add('revealed');
+        document.getElementById('shadowImg').style.filter = 'brightness(1)';
+        document.getElementById('hintText').textContent = '🎉 答对啦！是 ' + currentMengke.name + '！';
+
+        score += 1;
+        updateScore();
+        showEffect('太棒了！+1分 🎉', true);
+
+        setTimeout(() => {
+          nextRound();
+        }, 1800);
+      } else {
+        // 猜错
+        btn.classList.add('wrong');
+        showEffect('哎呀，猜错了 😢', false);
+        setTimeout(() => {
+          startPunishment();
+        }, 1000);
+      }
+    }
+
+    function startPunishment() {
+      isPunishing = true;
+      document.getElementById('gameArea').style.display = 'none';
+      document.getElementById('punishArea').style.display = 'flex';
+
+      // 生成10以内加减法
+      const a = Math.floor(Math.random() * 10) + 1; // 1-10
+      const b = Math.floor(Math.random() * (a > 5 ? 6 : a)); // 保证结果非负
+      const isAdd = Math.random() > 0.4; // 更多加法
+
+      let question, answer;
+      if (isAdd) {
+        question = `${a} + ${b} = ?`;
+        answer = a + b;
+      } else {
+        question = `${a} - ${b} = ?`;
+        answer = a - b;
+      }
+
+      document.getElementById('mathQuestion').textContent = question;
+
+      // 生成选项（正确答案 + 3个干扰）
+      let mathOpts = [answer];
+      while (mathOpts.length < 4) {
+        let wrong = answer + Math.floor(Math.random() * 7) - 3;
+        if (wrong < 0) wrong = Math.abs(wrong);
+        if (wrong > 20) wrong = 20;
+        if (!mathOpts.includes(wrong)) {
+          mathOpts.push(wrong);
+        }
+      }
+      mathOpts = mathOpts.sort(() => Math.random() - 0.5);
+
+      const mathDiv = document.getElementById('mathOptions');
+      mathDiv.innerHTML = '';
+      mathOpts.forEach(num => {
+        const btn = document.createElement('button');
+        btn.className = 'math-btn';
+        btn.textContent = num;
+        btn.onclick = () => checkMath(num, answer, btn);
+        mathDiv.appendChild(btn);
+      });
+    }
+
+    function checkMath(selected, correct, btn) {
+      const allBtns = document.querySelectorAll('.math-btn');
+      allBtns.forEach(b => b.onclick = null);
+
+      if (selected === correct) {
+        btn.style.background = 'linear-gradient(145deg, #d4edda, #a8e6cf)';
+        btn.style.borderColor = '#28a745';
+        showEffect('算对了！继续吧 💪', true);
+        setTimeout(() => {
+          nextRound();
+        }, 1200);
+      } else {
+        btn.style.background = 'linear-gradient(145deg, #f8d7da, #f5c6cb)';
+        btn.style.borderColor = '#dc3545';
+        showEffect('再想想～', false);
+        // 重新生成一道题
+        setTimeout(() => {
+          startPunishment();
+        }, 1000);
+      }
+    }
+
+    function showEffect(text, isHappy) {
+      const overlay = document.getElementById('effectOverlay');
+      const effectText = document.getElementById('effectText');
+      effectText.textContent = text;
+      effectText.classList.add('show');
+
+      if (isHappy) {
+        // 撒花特效
+        for (let i = 0; i < 30; i++) {
+          setTimeout(() => {
+            const confetti = document.createElement('div');
+            confetti.className = 'confetti';
+            confetti.style.left = Math.random() * 100 + 'vw';
+            confetti.style.background = ['#ff6b9d', '#74b9ff', '#fdcb6e', '#55efc4', '#a29bfe'][Math.floor(Math.random() * 5)];
+            confetti.style.animationDuration = (1.5 + Math.random()) + 's';
+            overlay.appendChild(confetti);
+            setTimeout(() => confetti.remove(), 2500);
+          }, i * 50);
+        }
+      }
+
+      setTimeout(() => {
+        effectText.classList.remove('show');
+      }, 1500);
+    }
+
+    // 防止页面滚动（iOS友好）
+    document.addEventListener('touchmove', function(e) {
+      if (e.target.closest('.options') || e.target.closest('.math-options')) return;
+      e.preventDefault();
+    }, { passive: false });
+  </script>
+</body>
+</html>
