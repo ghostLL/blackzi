@@ -3,7 +3,7 @@
  * 基于 IBL3ND/module CT_Widget.JS
  *
  * 本版仅优化：
- *   - 同步显示：话费余额、国内流量、本地流量、国内语音、本地语音
+ *   - 同步显示：话费余额、国内流量、本地流量、国内语音、专属语音
  *   - 小组件排版美化（中等 2×2 + 标题栏话费）
  * 登录 / 缓存 / 接口逻辑保持原版不变
  */
@@ -16,7 +16,7 @@ const URLS = {
 const FLOW_DOM_COLOR = '#0A84FF';
 const FLOW_LOC_COLOR = '#64D2FF';
 const VOICE_DOM_COLOR = '#34C759';
-const VOICE_LOC_COLOR = '#30D158';
+const VOICE_SPEC_COLOR = '#AF52DE';
 const FEE_COLOR = '#FF9500';
 
 const COLORS = {
@@ -282,7 +282,7 @@ function _mkVoiceItem(title, used, bal, tot, showUsed, color) {
  * - 话费余额
  * - 国内流量 ≈ commonFlow（通用）
  * - 本地流量 ≈ specialAmount（专用），或明细名含本地
- * - 国内/本地语音：优先明细拆分，否则汇总到国内语音
+ * - 国内语音：汇总语音；专属语音：明细名含专属/专用
  */
 function parseImportantData(apiData, opts) {
   const { showUsedFlow, showUsedVoice, showGeneralFlow, showDirectionalFlow } = opts;
@@ -369,7 +369,7 @@ function parseImportantData(apiData, opts) {
     );
   }
 
-  // —— 语音 ——
+  // —— 语音：国内 + 专属 ——
   const voiceInfo = (apiData && apiData.voiceInfo && apiData.voiceInfo.voiceDataInfo) || {};
   let vTotal = _safeN(voiceInfo.total !== undefined ? voiceInfo.total : apiData && apiData.totalVoice);
   let vUsed = _safeN(voiceInfo.used !== undefined ? voiceInfo.used : apiData && apiData.usedVoice);
@@ -377,8 +377,9 @@ function parseImportantData(apiData, opts) {
     voiceInfo.balance !== undefined ? voiceInfo.balance : Math.max(0, vTotal - vUsed)
   );
 
-  let locVoice = { used: 0, balance: 0, total: 0 };
-  let hasLocalVoice = false;
+  // 专属语音：明细名含 专属 / 专用 / 定向
+  let specVoice = { used: 0, balance: 0, total: 0 };
+  let hasSpecVoice = false;
   const vLists = [];
   const vi = apiData && apiData.voiceInfo;
   if (vi) {
@@ -389,31 +390,33 @@ function parseImportantData(apiData, opts) {
   }
   for (const it of vLists) {
     const name = it.title || it.name || it.ratableResourcename || '';
-    if (!isLocalName(name)) continue;
-    hasLocalVoice = true;
-    locVoice.used += _safeN(it.used ?? it.usageAmount);
-    locVoice.balance += _safeN(it.balance ?? it.balanceAmount);
-    locVoice.total += _safeN(it.total ?? it.ratableAmount ?? (_safeN(it.used) + _safeN(it.balance)));
+    if (!/专属|专用|定向/.test(String(name))) continue;
+    hasSpecVoice = true;
+    specVoice.used += _safeN(it.used ?? it.usageAmount);
+    specVoice.balance += _safeN(it.balance ?? it.balanceAmount);
+    specVoice.total += _safeN(
+      it.total ?? it.ratableAmount ?? (_safeN(it.used) + _safeN(it.balance))
+    );
   }
 
   const voiceDomestic = _mkVoiceItem(
     '国内语音',
-    hasLocalVoice ? Math.max(0, vUsed - locVoice.used) : vUsed,
-    hasLocalVoice ? Math.max(0, vBalance - locVoice.balance) : vBalance,
-    hasLocalVoice ? Math.max(0, vTotal - locVoice.total) : vTotal,
+    hasSpecVoice ? Math.max(0, vUsed - specVoice.used) : vUsed,
+    hasSpecVoice ? Math.max(0, vBalance - specVoice.balance) : vBalance,
+    hasSpecVoice ? Math.max(0, vTotal - specVoice.total) : vTotal,
     showUsedVoice,
     VOICE_DOM_COLOR
   );
 
-  let voiceLocal = null;
-  if (hasLocalVoice) {
-    voiceLocal = _mkVoiceItem(
-      '本地语音',
-      locVoice.used,
-      locVoice.balance,
-      locVoice.total,
+  let voiceSpecial = null;
+  if (hasSpecVoice && (specVoice.used || specVoice.balance || specVoice.total)) {
+    voiceSpecial = _mkVoiceItem(
+      '专属语音',
+      specVoice.used,
+      specVoice.balance,
+      specVoice.total,
       showUsedVoice,
-      VOICE_LOC_COLOR
+      VOICE_SPEC_COLOR
     );
   }
 
@@ -422,12 +425,12 @@ function parseImportantData(apiData, opts) {
     flowDomestic,
     flowLocal,
     voiceDomestic,
-    voiceLocal,
-    // 兼容旧字段（小尺寸/锁屏回退）
+    voiceSpecial,
+    // 兼容旧字段
     flow: flowDomestic,
     voice: voiceDomestic,
     hasLocalFlow: !!flowLocal,
-    hasLocalVoice: !!voiceLocal,
+    hasSpecialVoice: !!voiceSpecial,
     updatedAt: Date.now(),
   };
 }
@@ -647,8 +650,8 @@ function buildMainWidget(title, ds, fromCache) {
   const voiceRow = [
     mediumCell('phone.circle.fill', VOICE_DOM_COLOR, ds.voiceDomestic || ds.voice),
   ];
-  if (ds.voiceLocal) {
-    voiceRow.push(mediumCell('phone.fill', VOICE_LOC_COLOR, ds.voiceLocal));
+  if (ds.voiceSpecial) {
+    voiceRow.push(mediumCell('phone.fill', VOICE_SPEC_COLOR, ds.voiceSpecial));
   }
 
   return {
@@ -772,10 +775,10 @@ function buildSmall(title, ds, fromCache) {
     ),
   ];
 
-  if (ds.flowLocal || ds.voiceLocal) {
+  if (ds.flowLocal || ds.voiceSpecial) {
     const tips = [];
     if (ds.flowLocal) tips.push(`本地流量 ${ds.flowLocal.number}${ds.flowLocal.unit}`);
-    if (ds.voiceLocal) tips.push(`本地语音 ${ds.voiceLocal.number}分`);
+    if (ds.voiceSpecial) tips.push(`专属语音 ${ds.voiceSpecial.number}分`);
     children.push({
       type: 'text',
       text: tips.join(' · '),
