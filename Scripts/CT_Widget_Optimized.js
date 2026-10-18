@@ -17,8 +17,7 @@
 
 const URLS = {
   login: 'https://appgologin.189.cn:9031/login/client/userLoginNormal',
-  query: 'https://appfuwu.189.cn:9021/query/qryImportantData',
-};
+  query: 'https://appfuwu.189.cn:9021/query/qryImportantData'};
 
 const C = {
   light: {
@@ -29,8 +28,7 @@ const C = {
     nationalVoiceBg: '#E7F7EC', nationalVoice: '#168047',
     localFlowBg: '#FFF3DD', localFlow: '#A85D08',
     nationalFlowBg: '#F3E9FF', nationalFlow: '#7938B5',
-    error: '#D92D20',
-  },
+    error: '#D92D20'},
   dark: {
     bg: '#1C1C1E', border: '#39393D', title: '#A1A1AA',
     value: '#F5F5F7', muted: '#8E8E93', accent: '#FF854D',
@@ -39,9 +37,7 @@ const C = {
     nationalVoiceBg: '#1F382B', nationalVoice: '#8AE0AE',
     localFlowBg: '#3B3020', localFlow: '#FFD08A',
     nationalFlowBg: '#332641', nationalFlow: '#D8B5FF',
-    error: '#FF6961',
-  },
-};
+    error: '#FF6961'}};
 
 function n(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -105,8 +101,7 @@ async function postJSON(ctx, url, body) {
     resp = await ctx.http.post(url, {
       headers: {'Content-Type':'application/json; charset=UTF-8'},
       body: JSON.stringify(body),
-      timeout: 15000,
-    });
+      timeout: 15000});
   } catch (_) {
     const e = new Error('网络请求失败'); e.transient = true; throw e;
   }
@@ -121,8 +116,7 @@ function getAccount(ctx) {
   return {
     phone: str(env.CT_PHONE).trim(),
     password: str(env.CT_PASSWORD || env.CT_SERVICE_PASSWORD).trim(),
-    deviceId: str(env.CT_DEVICE_ID).trim(),
-  };
+    deviceId: str(env.CT_DEVICE_ID).trim()};
 }
 async function telecomLogin(ctx, account) {
   const {phone,password,deviceId} = account;
@@ -135,14 +129,11 @@ async function telecomLogin(ctx, account) {
       loginType:'4', accountType:'', isChinatelecom:'', systemVersion:'15.4.0',
       deviceUid:uuid.slice(0,16), phoneNum:transNumber(phone),
       authentication:transNumber(password), androidId:deviceId?transNumber(deviceId):'',
-      loginAuthCipherAsymmertric:encrypted,
-    }, attach:'iPhone'},
+      loginAuthCipherAsymmertric:encrypted}, attach:'iPhone'},
     headerInfos: {
       code:'userLoginNormal', clientType:'#12.2.0#channel50#iPhone 14 Pro#',
       timestamp:ts, shopId:'20002', source:'110003', sourcePassword:'Sid98s',
-      userLoginName:transNumber(phone),
-    },
-  };
+      userLoginName:transNumber(phone)}};
   const data = await postJSON(ctx, URLS.login, body);
   const rd = data && data.responseData;
   if (!rd || rd.resultCode !== '0000') throw new Error(`登录失败：${(rd&&rd.resultDesc)|| (rd&&rd.resultCode)||'未知错误'}`);
@@ -161,14 +152,11 @@ async function fetchImportantData(ctx, account, token, cityCode, provinceCode) {
   const body = {
     content: {fieldData: {
       provinceCode, cityCode, shopId:'20002', isChinatelecom:'0',
-      account:transNumber(account.phone),
-    }, attach:'test'},
+      account:transNumber(account.phone)}, attach:'test'},
     headerInfos: {
       code:'qryImportantData', clientType:'#12.2.0#channel50#iPhone 14 Pro#',
       timestamp:ts, shopId:'20002', source:'110003', sourcePassword:'Sid98s',
-      userLoginName:transNumber(account.phone), token,
-    },
-  };
+      userLoginName:transNumber(account.phone), token}};
   const response = await postJSON(ctx,URLS.query,body);
   if (!response || !response.responseData) {
     const e = new Error(`查询失败：${(response&&response.headerInfos&&response.headerInfos.reason)||'Token 可能失效'}`);
@@ -336,8 +324,7 @@ function card(label,value,unit,bg,color) {
         makeText(value,'title3',color,'bold'),
         makeText(unit,'caption2',color,'regular'),
       ]},
-    ],
-  };
+    ]};
 }
 function buildMedium(title,ds,fromCache) {
   const c=C;
@@ -352,8 +339,7 @@ function buildMedium(title,ds,fromCache) {
     maxLines:1,minScale:0.6
   });
   const card=(label,value,unit,bg,color,symbol)=>({
-    type:'stack',direction:'column',alignItems:'start',
-    width:'100%',padding:[6,9,6,9],backgroundColor:bg,borderRadius:11,gap:3,
+    type:'stack',direction:'column',alignItems:'start',padding:[6,9,6,9],backgroundColor:bg,borderRadius:11,gap:3,
     children:[
       {type:'stack',direction:'row',alignItems:'center',gap:5,children:[
         {type:'image',src:`sf-symbol:${symbol}`,color,width:12,height:12},
@@ -372,7 +358,7 @@ function buildMedium(title,ds,fromCache) {
     refreshAfter:new Date(Date.now()+60*60*1000).toISOString(),
     children:[
       // Header
-      {type:'stack',direction:'row',alignItems:'center',gap:6,width:'100%',children:[
+      {type:'stack',direction:'row',alignItems:'center',gap:6,children:[
         {type:'image',src:'sf-symbol:antenna.radiowaves.left.and.right',
          color:{light:c.light.accent,dark:c.dark.accent},width:17,height:17},
         txt(title,'headline',{light:c.light.value,dark:c.dark.value},'semibold'),
@@ -382,8 +368,7 @@ function buildMedium(title,ds,fromCache) {
       ]},
 
       // Full-width balance banner; explicit width prevents intrinsic-size shrink.
-      {type:'stack',direction:'row',alignItems:'center',gap:10,
-       width:'100%',padding:[8,12,8,12],
+      {type:'stack',direction:'row',alignItems:'center',gap:10,padding:[8,12,8,12],
        backgroundColor:{light:c.light.feeBg,dark:c.dark.feeBg},borderRadius:11,
        children:[
          {type:'image',src:'sf-symbol:creditcard.fill',
@@ -398,23 +383,23 @@ function buildMedium(title,ds,fromCache) {
        ]},
 
       // Fixed compact two-column rows avoid card overlap in medium widget.
-      {type:'stack',direction:'row',alignItems:'center',gap:7,width:'100%',children:[
-        {type:'stack',direction:'column',alignItems:'start',flex:1,width:'50%',
+      {type:'stack',direction:'row',alignItems:'center',gap:7,children:[
+        {type:'stack',direction:'column',alignItems:'start',flex:1,
          children:[card('本地通话',lv.number,'分钟',
            {light:c.light.localVoiceBg,dark:c.dark.localVoiceBg},
            {light:c.light.localVoice,dark:c.dark.localVoice},'phone')]},
-        {type:'stack',direction:'column',alignItems:'start',flex:1,width:'50%',
+        {type:'stack',direction:'column',alignItems:'start',flex:1,
          children:[card('全国通话',nv.number,'分钟',
            {light:c.light.nationalVoiceBg,dark:c.dark.nationalVoiceBg},
            {light:c.light.nationalVoice,dark:c.dark.nationalVoice},'phone.fill')]}
       ]},
 
-      {type:'stack',direction:'row',alignItems:'center',gap:7,width:'100%',children:[
-        {type:'stack',direction:'column',alignItems:'start',flex:1,width:'50%',
+      {type:'stack',direction:'row',alignItems:'center',gap:7,children:[
+        {type:'stack',direction:'column',alignItems:'start',flex:1,
          children:[card('本地流量',lf.number,lf.unit||'GB',
            {light:c.light.localFlowBg,dark:c.dark.localFlowBg},
            {light:c.light.localFlow,dark:c.dark.localFlow},'antenna.radiowaves.left.and.right')]},
-        {type:'stack',direction:'column',alignItems:'start',flex:1,width:'50%',
+        {type:'stack',direction:'column',alignItems:'start',flex:1,
          children:[card('全国流量',nf.number,nf.unit||'GB',
            {light:c.light.nationalFlowBg,dark:c.dark.nationalFlowBg},
            {light:c.light.nationalFlow,dark:c.dark.nationalFlow},'globe')] }
