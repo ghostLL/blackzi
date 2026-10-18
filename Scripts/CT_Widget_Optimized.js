@@ -224,11 +224,32 @@ function collectResourceRows(root) {
   return rows;
 }
 function parseData(api) {
-  const balance = n(api && api.balanceInfo && api.balanceInfo.indexBalanceDataInfo && api.balanceInfo.indexBalanceDataInfo.balance);
-  const feeN = balance !== null && balance !== 0 ? balance : n(api && api.balance);
+  // 优先使用原始模块已验证的电信首页余额字段；0 元也是有效值，不能当作缺失。
+  let feeN = n(api && api.balanceInfo && api.balanceInfo.indexBalanceDataInfo &&
+               api.balanceInfo.indexBalanceDataInfo.balance);
+  if (feeN === null) feeN = n(api && api.balance);
+  if (feeN === null && api && api.balanceInfo && typeof api.balanceInfo === 'object') {
+    // 兼容部分省份返回的字段层级差异，仅在 balanceInfo 内查找余额相关字段。
+    const candidates = [
+      api.balanceInfo.balance,
+      api.balanceInfo.balanceAmount,
+      api.balanceInfo.remainAmount,
+      api.balanceInfo.indexBalanceDataInfo && api.balanceInfo.indexBalanceDataInfo.balanceAmount,
+      api.balanceInfo.indexBalanceDataInfo && api.balanceInfo.indexBalanceDataInfo.remainAmount
+    ];
+    for (const candidate of candidates) {
+      const parsed = n(candidate);
+      if (parsed !== null) { feeN = parsed; break; }
+    }
+  }
   const fee = {title:'话费余额',number:feeN===null?'--':feeN.toFixed(2),unit:'元'};
 
   const rows=collectResourceRows(api);
+  const apiKeys = api && typeof api === 'object' ? Object.keys(api).slice(0,12).join(',') : typeof api;
+  const balanceKeys = api && api.balanceInfo && typeof api.balanceInfo === 'object'
+    ? Object.keys(api.balanceInfo).slice(0,8).join(',') : '无balanceInfo';
+  const resourceNames = rows.slice(0,4).map(r => r.name).join('、') || '未识别资源条目';
+  const diagnostic = `字段:${apiKeys || '空'}；余额字段:${balanceKeys}；识别资源:${rows.length}；${resourceNames}`;
   const sum=(kind,loc)=> {
     const matches=rows.filter(r=>r[kind] && category(r.name)===loc);
     if (!matches.length) return null;
@@ -252,7 +273,7 @@ function parseData(api) {
   const voiceRaw=n(voiceInfo.balance) ?? ((n(voiceInfo.total)!==null&&n(voiceInfo.used)!==null)?Math.max(0,n(voiceInfo.total)-n(voiceInfo.used)):null);
   const flow=flowRaw===null?{title:'剩余流量',number:'--',unit:'GB'}:{title:'剩余流量',...formatFlow(flowRaw)};
   const voice={title:'剩余语音',number:voiceRaw===null?'--':String(Math.round(voiceRaw)),unit:'分钟'};
-  return {fee,localVoice,nationalVoice,localFlow,nationalFlow,flow,voice,updatedAt:Date.now()};
+  return {fee,localVoice,nationalVoice,localFlow,nationalFlow,flow,voice,diagnostic,updatedAt:Date.now()};
 }
 async function loadData(ctx) {
   const account=getAccount(ctx);
@@ -403,7 +424,9 @@ function buildMedium(title,ds,fromCache) {
          children:[card('全国流量',nf.number,nf.unit||'GB',
            {light:c.light.nationalFlowBg,dark:c.dark.nationalFlowBg},
            {light:c.light.nationalFlow,dark:c.dark.nationalFlow},'globe')] }
-      ]}
+      ]},
+      txt(`诊断 ${String(ds.diagnostic||'无诊断信息').slice(0,105)}`,'caption2',
+        {light:c.light.muted,dark:c.dark.muted})
     ]
   };
 }
