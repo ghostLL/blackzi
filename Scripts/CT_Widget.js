@@ -1,91 +1,40 @@
 /*
- * 中国电信小组件（优化版）
- * 用这个链接去登录 https://e.dlife.cn
- * 同一个文件，两种用法：
- *   1. generic 类型 → iOS 小组件
- *   2. request 类型 → 登录捕获
+ * 中国电信小组件（Egern 版，App RSA 登录）
+ * 基于 IBL3ND/module CT_Widget.JS
  *
- * 环境变量：不需要手动填，添加模块后登录即可
- *   CT_LOGIN_URL
- *   CT_COOKIE
- *   CT_SHOW_USED_FLOW
- *   CT_FILTER_ORIENTATE_FLOW
- *   CT_TITLE
- *
- * 数据来源：
- *   https://e.dlife.cn/user/package_detail.do
- *   https://e.dlife.cn/user/balance.do
- *
- * 优化内容：
- *   - 流量/语音自动区分「国内」与「本地」
- *   - 界面美化（电信蓝系、进度条、卡片布局）
- *   - 无本地数据时自动隐藏对应项
+ * 本版仅优化：
+ *   - 同步显示：话费余额、国内流量、本地流量、国内语音、专属语音
+ *   - 小组件排版美化（中等 2×2 + 标题栏话费）
+ * 登录 / 缓存 / 接口逻辑保持原版不变
  */
 
 const URLS = {
-  login: 'https://e.dlife.cn/index.do',
-  detail: 'https://e.dlife.cn/user/package_detail.do',
-  balance: 'https://e.dlife.cn/user/balance.do',
+  login: 'https://appgologin.189.cn:9031/login/client/userLoginNormal',
+  query: 'https://appfuwu.189.cn:9021/query/qryImportantData',
 };
 
-// 电信蓝系配色
+const FLOW_DOM_COLOR = '#0A84FF';
+const FLOW_LOC_COLOR = '#64D2FF';
+const VOICE_DOM_COLOR = '#34C759';
+const VOICE_SPEC_COLOR = '#AF52DE';
+const FEE_COLOR = '#FF9500';
+
 const COLORS = {
-  bg: {
-    light: '#F7F9FC',
-    dark: '#1C1C1E',
-  },
-  card: {
-    light: '#FFFFFF',
-    dark: '#2C2C2E',
-  },
-  border: {
-    light: '#E8EEF5',
-    dark: '#3A3A3C',
-  },
-  title: {
-    light: '#8A94A6',
-    dark: '#8E8E93',
-  },
-  value: {
-    light: '#1A1A2E',
-    dark: '#FFFFFF',
-  },
-  time: {
-    light: '#A0AAB8',
-    dark: '#636366',
-  },
-  error: {
-    light: '#FF3B30',
-    dark: '#FF453A',
-  },
-  accent: {
-    light: '#007AFF',
-    dark: '#0A84FF',
-  },
-  flow: {
-    light: '#FF6B35',
-    dark: '#FF8A5B',
-  },
-  voice: {
-    light: '#34C759',
-    dark: '#30D158',
-  },
-  fee: {
-    light: '#007AFF',
-    dark: '#0A84FF',
-  },
-  progressBg: {
-    light: '#E8EEF5',
-    dark: '#3A3A3C',
-  },
+  bg: { light: '#F7F9FC', dark: '#1C1C1E' },
+  card: { light: '#FFFFFF', dark: '#2C2C2E' },
+  border: { light: '#E5E5EA', dark: '#3A3A3C' },
+  title: { light: '#666666', dark: '#8E8E93' },
+  value: { light: '#1C1C1E', dark: '#FFFFFF' },
+  time: { light: '#999999', dark: '#666666' },
+  error: { light: '#FF3B30', dark: '#FF453A' },
+  capsuleBg: { light: '#FFFFFF15', dark: '#FFFFFF10' },
+  accent: { light: '#FF6620', dark: '#FF854D' },
 };
 
-function formatFlow(kb) {
-  const mb = kb / 1024;
-  if (mb < 1024) {
-    return { amount: mb.toFixed(2), unit: 'MB' };
-  }
-  return { amount: (mb / 1024).toFixed(2), unit: 'GB' };
+function formatFlow(flow) {
+  const remain = flow / 1024;
+  if (remain < 1024) return { amount: remain.toFixed(2), unit: 'MB' };
+  return { amount: (remain / 1024).toFixed(2), unit: 'GB' };
 }
 
 function pad2(n) {
@@ -97,642 +46,549 @@ function fmtTime(ts) {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-function isLocalName(name = '') {
-  return /本地|省内|本市|本省/.test(name);
+function _safeN(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function isDirectional(name = '') {
-  return /定向/.test(name);
+function transNumber(str, encode = true) {
+  return [...String(str || '')]
+    .map((c) => String.fromCharCode((c.charCodeAt(0) + (encode ? 2 : -2)) & 0xffff))
+    .join('');
 }
 
-const UA =
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
-
-// 合并 cookie 字符串：新值覆盖同名 key
-function mergeCookieString(oldStr, newStr) {
-  const map = {};
-  const apply = (s) => {
-    String(s || '')
-      .split(';')
-      .forEach((p) => {
-        const t = p.trim();
-        if (!t) return;
-        const i = t.indexOf('=');
-        if (i <= 0) return;
-        const k = t.slice(0, i).trim();
-        const v = t.slice(i + 1).trim();
-        if (k) map[k] = v;
-      });
-  };
-  apply(oldStr);
-  apply(newStr);
-  return Object.entries(map)
-    .map(([k, v]) => `${k}=${v}`)
-    .join('; ');
+function getBeijingTimestamp() {
+  const bjDate = new Date(Date.now() + 8 * 3600 * 1000);
+  const yyyy = String(bjDate.getFullYear());
+  const MM = String(bjDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(bjDate.getDate()).padStart(2, '0');
+  const HH = String(bjDate.getHours()).padStart(2, '0');
+  const mm = String(bjDate.getMinutes()).padStart(2, '0');
+  const ss = String(bjDate.getSeconds()).padStart(2, '0');
+  return `${yyyy}${MM}${dd}${HH}${mm}${ss}`;
 }
 
-function extractSetCookies(resp) {
-  if (!resp || !resp.headers) return [];
-  if (typeof resp.headers.getAll === 'function') {
-    return resp.headers.getAll('set-cookie') || [];
+const RSA_MOD_HEX =
+  'c190b4f5e53855833ebf34e97ab3c18d3e87dd5b359b0a45a791a026eced8b8e43351fb74cbf3922a9dc54d368da9864472d7fd934c0971e73dc5bfb0386214204dd7ca85bf2f20e9561bf50b6ba08d3d7b5efab3e642b62bfb85b8a7d9c0938fdf625299c4968666d7d9701f2a3af6ee543223cca6ad3f5ca04ef2562137f83';
+
+function _modPow(base, exp, mod) {
+  let result = 1n;
+  let b = base % mod;
+  let e = exp;
+  while (e > 0n) {
+    if (e & 1n) result = (result * b) % mod;
+    b = (b * b) % mod;
+    e >>= 1n;
   }
-  if (typeof resp.headers.get === 'function') {
-    const single = resp.headers.get('set-cookie');
-    return single ? [single] : [];
-  }
-  return [];
+  return result;
 }
 
-function saveCookie(ctx, cookieStr) {
-  if (!cookieStr || !cookieStr.trim()) return ctx.storage.get('ct_cookie') || '';
-  const merged = mergeCookieString(ctx.storage.get('ct_cookie') || '', cookieStr);
-  ctx.storage.set('ct_cookie', merged);
-  ctx.storage.set('ct_cookie_ts', String(Date.now()));
-  return merged;
+function _base64Encode(bytes) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    out += chars[b0 >> 2];
+    out += chars[((b0 & 3) << 4) | (b1 >> 4)];
+    out += i + 1 < bytes.length ? chars[((b1 & 15) << 2) | (b2 >> 6)] : '=';
+    out += i + 2 < bytes.length ? chars[b2 & 63] : '=';
+  }
+  return out;
 }
 
-// 用 loginUrl 换新 cookie（核心保活）
-async function refreshCookie(ctx) {
-  const loginUrl =
-    (ctx.env.CT_LOGIN_URL || '').trim() ||
-    ctx.storage.get('ct_login_url') ||
-    '';
-
-  if (!loginUrl) {
-    return ctx.storage.get('ct_cookie') || '';
+function rsaEncrypt(text) {
+  const data = [...String(text)].map((c) => c.charCodeAt(0) & 0xff);
+  const k = 128;
+  if (data.length > k - 11) throw new Error('RSA 明文过长');
+  const psLen = k - data.length - 3;
+  const ps = [];
+  while (ps.length < psLen) {
+    const r = Math.floor(Math.random() * 255) + 1;
+    if (r !== 0) ps.push(r);
   }
+  const em = [0x00, 0x02, ...ps, 0x00, ...data];
+  let hex = '';
+  for (const b of em) hex += b.toString(16).padStart(2, '0');
+  const m = BigInt('0x' + RSA_MOD_HEX);
+  const c = _modPow(BigInt('0x' + hex), 65537n, m);
+  let cHex = c.toString(16).padStart(256, '0');
+  const out = [];
+  for (let i = 0; i < cHex.length; i += 2) out.push(parseInt(cHex.slice(i, i + 2), 16));
+  return _base64Encode(out);
+}
 
-  const url = (loginUrl.match(/(http.+)&sign/) || [])[1] || loginUrl;
-
+async function _postJson(ctx, url, bodyObj) {
+  let resp;
   try {
-    // 1) 先 manual，拿 set-cookie
-    const resp = await ctx.http.get(url, {
-      redirect: 'manual',
+    resp = await ctx.http.post(url, {
+      headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify(bodyObj),
       timeout: 15000,
-      credentials: 'omit',
-      headers: { 'User-Agent': UA },
     });
-
-    const pairs = extractSetCookies(resp)
-      .map((c) => String(c).split(';')[0].trim())
-      .filter(Boolean);
-
-    if (pairs.length > 0) {
-      saveCookie(ctx, pairs.join('; '));
-    }
-
-    // 2) 若有 Location，再跟一次（部分登录链需要）
-    let location = null;
-    if (resp.headers) {
-      if (typeof resp.headers.get === 'function') {
-        location = resp.headers.get('location') || resp.headers.get('Location');
-      }
-    }
-    if (location) {
-      try {
-        const abs = location.startsWith('http')
-          ? location
-          : `https://e.dlife.cn${location.startsWith('/') ? '' : '/'}${location}`;
-        const resp2 = await ctx.http.get(abs, {
-          redirect: 'manual',
-          timeout: 12000,
-          credentials: 'omit',
-          headers: {
-            'User-Agent': UA,
-            Cookie: ctx.storage.get('ct_cookie') || '',
-          },
-        });
-        const pairs2 = extractSetCookies(resp2)
-          .map((c) => String(c).split(';')[0].trim())
-          .filter(Boolean);
-        if (pairs2.length > 0) {
-          saveCookie(ctx, pairs2.join('; '));
-        }
-      } catch (e) {}
-    }
   } catch (e) {
-    // 静默
-  }
-
-  // 3) 再用当前 cookie 访问首页，续期 session
-  try {
-    const cookie = ctx.storage.get('ct_cookie') || '';
-    if (cookie) {
-      const warm = await ctx.http.get(URLS.login, {
-        redirect: 'manual',
-        timeout: 10000,
-        credentials: 'omit',
-        headers: { 'User-Agent': UA, Cookie: cookie },
-      });
-      const warmPairs = extractSetCookies(warm)
-        .map((c) => String(c).split(';')[0].trim())
-        .filter(Boolean);
-      if (warmPairs.length > 0) {
-        saveCookie(ctx, warmPairs.join('; '));
-      }
-    }
-  } catch (e) {}
-
-  return ctx.storage.get('ct_cookie') || '';
-}
-
-async function fetchJson(ctx, url, cookie) {
-  const resp = await ctx.http.get(url, {
-    headers: {
-      Cookie: cookie,
-      'User-Agent': UA,
-      Accept: 'application/json, text/plain, */*',
-      Referer: 'https://e.dlife.cn/',
-    },
-    timeout: 15000,
-    credentials: 'omit',
-  });
-
-  // 登录失效常见：302 / 401 / 非 200
-  if (!resp || resp.status === 401 || resp.status === 403) {
-    throw new Error(`AUTH ${resp.status}: ${url}`);
+    const err = new Error(`network: ${url}`);
+    err.transient = true;
+    throw err;
   }
   if (!resp || resp.status !== 200) {
-    throw new Error(`HTTP ${resp ? resp.status : 'no-response'}: ${url}`);
+    const err = new Error(`HTTP ${resp ? resp.status : 'no-response'}: ${url}`);
+    err.transient = true;
+    throw err;
   }
-
-  // 响应里若带 set-cookie，顺手续期
-  const pairs = extractSetCookies(resp)
-    .map((c) => String(c).split(';')[0].trim())
-    .filter(Boolean);
-  if (pairs.length > 0) {
-    saveCookie(ctx, pairs.join('; '));
+  try {
+    return await resp.json();
+  } catch (e) {
+    const err = new Error(`not-json: ${url}`);
+    err.transient = true;
+    throw err;
   }
-
-  const json = await resp.json();
-  // 部分接口未登录会返回 result != 0
-  if (json && (json.result === -1 || json.result === '-1' || json.result === 30015)) {
-    throw new Error(`API auth fail: ${url}`);
-  }
-  return json;
 }
 
-function parseTelecom(detail, balance, opts) {
-  const { showUsedFlow, filterOrientateFlow } = opts;
+function _getAccount(ctx) {
+  const env = ctx.env || {};
+  const phone = String(env.CT_PHONE || '').trim();
+  const password = String(env.CT_PASSWORD || env.CT_SERVICE_PASSWORD || '').trim();
+  const deviceId = String(env.CT_DEVICE_ID || '').trim();
+  return { phone, password, deviceId };
+}
 
-  // 流量：国内 / 本地
-  let domesticFlowTotal = 0;
-  let domesticFlowBalance = 0;
-  let domesticFlowUsed = 0;
-
-  let localFlowTotal = 0;
-  let localFlowBalance = 0;
-  let localFlowUsed = 0;
-
-  // 语音：国内 / 本地
-  let domesticVoiceTotal = 0;
-  let domesticVoiceBalance = 0;
-
-  let localVoiceTotal = 0;
-  let localVoiceBalance = 0;
-
-  let isUnlimitedFlow = false;
-  let hasLocalFlow = false;
-  let hasLocalVoice = false;
-
-  for (const data of detail?.items || []) {
-    if (data.offerType === 19) continue;
-
-    for (const item of data.items || []) {
-      const name = item.ratableResourcename || '';
-      const unitType = item.unitTypeId;
-
-      // 流量 unitTypeId == 3
-      if (unitType == 3) {
-        const ratable = parseFloat(item.ratableAmount) || 0;
-        const balanceAmt = parseFloat(item.balanceAmount) || 0;
-        const used = parseFloat(item.usageAmount) || 0;
-
-        // 跳过异常大数
-        if (item.balanceAmount == '999999999999') continue;
-
-        const directional = isDirectional(name);
-        if (filterOrientateFlow && directional) {
-          // 定向流量只累计已用，不计入总量
-          domesticFlowUsed += used;
-          continue;
-        }
-
-        if (isLocalName(name)) {
-          hasLocalFlow = true;
-          localFlowTotal += ratable;
-          localFlowBalance += balanceAmt;
-          localFlowUsed += used;
-        } else {
-          // 默认归国内
-          domesticFlowTotal += ratable;
-          domesticFlowBalance += balanceAmt;
-          domesticFlowUsed += used;
-        }
-
-        if (data.offerType == 21 && item.ratableAmount == '0') {
-          isUnlimitedFlow = true;
-        }
-      }
-
-      // 语音 unitTypeId == 1
-      else if (unitType == 1) {
-        const ratable = parseInt(item.ratableAmount, 10) || 0;
-        const balanceAmt = parseInt(item.balanceAmount, 10) || 0;
-
-        if (isLocalName(name)) {
-          hasLocalVoice = true;
-          localVoiceTotal += ratable;
-          localVoiceBalance += balanceAmt;
-        } else {
-          domesticVoiceTotal += ratable;
-          domesticVoiceBalance += balanceAmt;
-        }
-      }
-    }
+async function telecomLogin(ctx, account) {
+  const { phone, password, deviceId } = account;
+  const uuid = String(Math.floor(Math.random() * 9e15 + 1e15));
+  const ts = getBeijingTimestamp();
+  const encryptText = `iPhone 14 15.4.0${deviceId || uuid.slice(0, 12)}${phone}${ts}${password}0$$$0.`;
+  const encrypted = rsaEncrypt(encryptText);
+  const loginBody = {
+    content: {
+      fieldData: {
+        loginType: '4',
+        accountType: '',
+        isChinatelecom: '',
+        systemVersion: '15.4.0',
+        deviceUid: uuid.slice(0, 16),
+        phoneNum: transNumber(phone),
+        authentication: transNumber(password),
+        androidId: deviceId ? transNumber(deviceId) : '',
+        loginAuthCipherAsymmertric: encrypted,
+      },
+      attach: 'iPhone',
+    },
+    headerInfos: {
+      code: 'userLoginNormal',
+      clientType: '#12.2.0#channel50#iPhone 14 Pro#',
+      timestamp: ts,
+      shopId: '20002',
+      source: '110003',
+      sourcePassword: 'Sid98s',
+      userLoginName: transNumber(phone),
+    },
+  };
+  const loginData = await _postJson(ctx, URLS.login, loginBody);
+  const rd = loginData && loginData.responseData;
+  if (!rd || rd.resultCode !== '0000') {
+    const err = new Error(
+      `登录失败 ${rd ? rd.resultCode : 'no-response'}：${(rd && rd.resultDesc) || '未知错误'}`
+    );
+    err.resultCode = rd ? rd.resultCode : '';
+    err.resultDesc = rd ? rd.resultDesc : '';
+    throw err;
   }
+  const { token, cityCode, provinceCode } = rd.data.loginSuccessResult || {};
+  if (!token) throw new Error('登录成功但未返回 token');
+  try {
+    ctx.storage.set('ct_app_token', token);
+    ctx.storage.set('ct_app_city', String(cityCode || ''));
+    ctx.storage.set('ct_app_province', String(provinceCode || ''));
+    ctx.storage.set('ct_app_token_ts', String(Date.now()));
+  } catch (_) {}
+  return { token, cityCode, provinceCode };
+}
 
-  // 部分账号语音总量在外层
-  if (detail.voiceAmount && detail.voiceBalance) {
-    domesticVoiceTotal = detail.voiceAmount;
-    domesticVoiceBalance = detail.voiceBalance;
+async function fetchImportantData(ctx, account, token, cityCode, provinceCode) {
+  const ts = getBeijingTimestamp();
+  const dataBody = {
+    content: {
+      fieldData: {
+        provinceCode,
+        cityCode,
+        shopId: '20002',
+        isChinatelecom: '0',
+        account: transNumber(account.phone),
+      },
+      attach: 'test',
+    },
+    headerInfos: {
+      code: 'qryImportantData',
+      clientType: '#12.2.0#channel50#iPhone 14 Pro#',
+      timestamp: ts,
+      shopId: '20002',
+      source: '110003',
+      sourcePassword: 'Sid98s',
+      userLoginName: transNumber(account.phone),
+      token,
+    },
+  };
+  const dataResp = await _postJson(ctx, URLS.query, dataBody);
+  if (!dataResp || !dataResp.responseData) {
+    const err = new Error(
+      `查数失败：${(dataResp && dataResp.headerInfos && dataResp.headerInfos.reason) || 'Token 失效'}`
+    );
+    err.authFailed = true;
+    throw err;
   }
+  return dataResp.responseData.data;
+}
 
-  // 格式化流量
-  const fmtDomesticFlow = formatFlow(domesticFlowBalance);
-  const fmtLocalFlow = formatFlow(localFlowBalance);
-  const fmtUsedDomestic = formatFlow(domesticFlowUsed);
-  const fmtUsedLocal = formatFlow(localFlowUsed);
+function isLocalName(name = '') {
+  return /本地|省内|本市|本省/.test(String(name));
+}
 
-  const makeFlowItem = (title, number, unit, percent, color) => ({
+function _pickFlow(obj) {
+  return {
+    used: _safeN(obj && obj.used),
+    balance: _safeN(obj && obj.balance),
+    total: _safeN(obj && (obj.total !== undefined ? obj.total : (_safeN(obj.used) + _safeN(obj.balance)))),
+  };
+}
+
+function _mkFlowItem(title, used, bal, tot, showUsed, color) {
+  const fmtB = formatFlow(bal);
+  const fmtU = formatFlow(used);
+  const item = {
     title,
-    number,
-    unit,
-    percent: Math.min(100, Math.max(0, percent)),
+    number: showUsed ? fmtU.amount : fmtB.amount,
+    unit: showUsed ? fmtU.unit : fmtB.unit,
+    percent: +(tot > 0 ? (((showUsed ? used : bal) / tot) * 100).toFixed(1) : '0'),
     color,
-  });
+  };
+  if (showUsed) item.title = title.replace('流量', '已用');
+  return item;
+}
 
-  let flowDomestic;
-  if (showUsedFlow || isUnlimitedFlow) {
-    flowDomestic = makeFlowItem(
-      '国内已用',
-      fmtUsedDomestic.amount,
-      fmtUsedDomestic.unit,
-      domesticFlowTotal > 0
-        ? +((domesticFlowUsed / domesticFlowTotal) * 100).toFixed(1)
-        : 0,
-      COLORS.flow
-    );
-  } else {
-    flowDomestic = makeFlowItem(
-      '国内流量',
-      fmtDomesticFlow.amount,
-      fmtDomesticFlow.unit,
-      domesticFlowTotal > 0
-        ? +((domesticFlowBalance / domesticFlowTotal) * 100).toFixed(1)
-        : 100,
-      COLORS.flow
-    );
-  }
-
-  let flowLocal = null;
-  if (hasLocalFlow) {
-    if (showUsedFlow || isUnlimitedFlow) {
-      flowLocal = makeFlowItem(
-        '本地已用',
-        fmtUsedLocal.amount,
-        fmtUsedLocal.unit,
-        localFlowTotal > 0
-          ? +((localFlowUsed / localFlowTotal) * 100).toFixed(1)
-          : 0,
-        COLORS.flow
-      );
-    } else {
-      flowLocal = makeFlowItem(
-        '本地流量',
-        fmtLocalFlow.amount,
-        fmtLocalFlow.unit,
-        localFlowTotal > 0
-          ? +((localFlowBalance / localFlowTotal) * 100).toFixed(1)
-          : 100,
-        COLORS.flow
-      );
-    }
-  }
-
-  // 语音
-  const voiceDomestic = {
-    title: '国内语音',
-    number: `${domesticVoiceBalance}`,
+function _mkVoiceItem(title, used, bal, tot, showUsed, color) {
+  return {
+    title: showUsed ? title.replace('语音', '已用') : title,
+    number: `${showUsed ? used : bal}`,
     unit: '分钟',
-    percent:
-      domesticVoiceTotal > 0
-        ? +((domesticVoiceBalance / domesticVoiceTotal) * 100).toFixed(1)
-        : 100,
-    color: COLORS.voice,
+    percent: +(tot > 0 ? (((showUsed ? used : bal) / tot) * 100).toFixed(1) : '0'),
+    color,
+  };
+}
+
+/**
+ * 解析 qryImportantData：
+ * - 话费余额
+ * - 国内流量 ≈ commonFlow（通用）
+ * - 本地流量 ≈ specialAmount（专用），或明细名含本地
+ * - 国内语音：汇总语音；专属语音：明细名含专属/专用
+ */
+function parseImportantData(apiData, opts) {
+  const { showUsedFlow, showUsedVoice, showGeneralFlow, showDirectionalFlow } = opts;
+
+  // —— 话费 ——
+  const balance = _safeN(
+    apiData &&
+      apiData.balanceInfo &&
+      apiData.balanceInfo.indexBalanceDataInfo &&
+      apiData.balanceInfo.indexBalanceDataInfo.balance
+  );
+  const feeBalance = balance !== 0 ? balance : _safeN(apiData && apiData.balance);
+  const fee = {
+    title: feeBalance < 0 ? '当前欠费' : '话费余额',
+    number: Math.abs(feeBalance).toFixed(2),
+    unit: '元',
+    color: feeBalance < 0 ? COLORS.error : FEE_COLOR,
   };
 
-  let voiceLocal = null;
-  if (hasLocalVoice) {
-    voiceLocal = {
-      title: '本地语音',
-      number: `${localVoiceBalance}`,
-      unit: '分钟',
-      percent:
-        localVoiceTotal > 0
-          ? +((localVoiceBalance / localVoiceTotal) * 100).toFixed(1)
-          : 100,
-      color: COLORS.voice,
+  // —— 流量：通用 / 专用 / 总量 ——
+  const common = _pickFlow((apiData && apiData.flowInfo && apiData.flowInfo.commonFlow) || {});
+  const special = _pickFlow((apiData && apiData.flowInfo && apiData.flowInfo.specialAmount) || {});
+  const total = _pickFlow((apiData && apiData.flowInfo && apiData.flowInfo.totalAmount) || {});
+
+  // 尝试从明细列表拆本地
+  let localFromList = { used: 0, balance: 0, total: 0 };
+  let hasLocalInList = false;
+  const lists = [];
+  const fi = apiData && apiData.flowInfo;
+  if (fi) {
+    for (const k of Object.keys(fi)) {
+      const v = fi[k];
+      if (Array.isArray(v)) lists.push(...v);
+    }
+  }
+  for (const it of lists) {
+    const name = it.title || it.name || it.ratableResourcename || it.flowName || '';
+    if (!isLocalName(name)) continue;
+    hasLocalInList = true;
+    localFromList.used += _safeN(it.used ?? it.usageAmount);
+    localFromList.balance += _safeN(it.balance ?? it.balanceAmount);
+    localFromList.total += _safeN(it.total ?? it.ratableAmount ?? (_safeN(it.used) + _safeN(it.balance)));
+  }
+
+  const hasCommon = common.used || common.balance || common.total;
+  const hasSpecial = special.used || special.balance || special.total;
+
+  // 国内流量：优先通用；若关闭通用则用总量
+  let domFlow = hasCommon ? common : total;
+  if (!showGeneralFlow && hasSpecial) {
+    domFlow = {
+      used: Math.max(0, total.used - special.used),
+      balance: Math.max(0, total.balance - special.balance),
+      total: Math.max(0, total.total - special.total),
     };
   }
 
-  // 话费 / 欠费（单位：分）
-  // 1) 从 balance 接口取
-  let availableFen = NaN;
-  const availableCandidates = [
-    balance?.totalBalanceAvailable,
-    balance?.balanceAvailable,
-    balance?.availableBalance,
-    balance?.totalBalance,
-    balance?.balance,
-    balance?.acctBalance,
-    balance?.realBalance,
-    balance?.data?.totalBalanceAvailable,
-    balance?.data?.balance,
-    balance?.result?.totalBalanceAvailable,
-  ];
-  for (const v of availableCandidates) {
-    if (v === undefined || v === null || v === '') continue;
-    const n = Number(v);
-    if (Number.isFinite(n)) {
-      availableFen = n;
-      break;
+  // 本地流量：明细本地 > 专用流量
+  let locFlow = null;
+  if (hasLocalInList) {
+    locFlow = localFromList;
+  } else if (hasSpecial && showDirectionalFlow !== false) {
+    locFlow = special;
+  }
+
+  const flowDomestic = _mkFlowItem(
+    '国内流量',
+    domFlow.used,
+    domFlow.balance,
+    domFlow.total,
+    showUsedFlow,
+    FLOW_DOM_COLOR
+  );
+
+  let flowLocal = null;
+  if (locFlow && (locFlow.used || locFlow.balance || locFlow.total)) {
+    flowLocal = _mkFlowItem(
+      '本地流量',
+      locFlow.used,
+      locFlow.balance,
+      locFlow.total,
+      showUsedFlow,
+      FLOW_LOC_COLOR
+    );
+  }
+
+  // —— 语音：国内 + 专属 ——
+  const voiceInfo = (apiData && apiData.voiceInfo && apiData.voiceInfo.voiceDataInfo) || {};
+  let vTotal = _safeN(voiceInfo.total !== undefined ? voiceInfo.total : apiData && apiData.totalVoice);
+  let vUsed = _safeN(voiceInfo.used !== undefined ? voiceInfo.used : apiData && apiData.usedVoice);
+  let vBalance = _safeN(
+    voiceInfo.balance !== undefined ? voiceInfo.balance : Math.max(0, vTotal - vUsed)
+  );
+
+  // 专属语音：明细名含 专属 / 专用 / 定向
+  let specVoice = { used: 0, balance: 0, total: 0 };
+  let hasSpecVoice = false;
+  const vLists = [];
+  const vi = apiData && apiData.voiceInfo;
+  if (vi) {
+    for (const k of Object.keys(vi)) {
+      const v = vi[k];
+      if (Array.isArray(v)) vLists.push(...v);
     }
   }
-
-  let oweFen = NaN;
-  const oweCandidates = [
-    balance?.oweFee,
-    balance?.oweAmount,
-    balance?.historyOweFee,
-    balance?.balanceDue,
-    balance?.dueAmount,
-    balance?.arrears,
-    balance?.oweBalance,
-    balance?.data?.oweFee,
-    balance?.data?.oweAmount,
-    balance?.result?.oweFee,
-  ];
-  for (const v of oweCandidates) {
-    if (v === undefined || v === null || v === '') continue;
-    const n = Number(v);
-    if (Number.isFinite(n) && n !== 0) {
-      oweFen = Math.abs(n);
-      break;
-    }
+  for (const it of vLists) {
+    const name = it.title || it.name || it.ratableResourcename || '';
+    if (!/专属|专用|定向/.test(String(name))) continue;
+    hasSpecVoice = true;
+    specVoice.used += _safeN(it.used ?? it.usageAmount);
+    specVoice.balance += _safeN(it.balance ?? it.balanceAmount);
+    specVoice.total += _safeN(
+      it.total ?? it.ratableAmount ?? (_safeN(it.used) + _safeN(it.balance))
+    );
   }
 
-  // 2) 兜底：从 package_detail 里找 unitTypeId==0（金额）的项
-  if ((!Number.isFinite(availableFen) || availableFen === 0) && !Number.isFinite(oweFen)) {
-    for (const data of detail?.items || []) {
-      for (const item of data.items || []) {
-        if (item.unitTypeId == 0) {
-          const bal = parseFloat(item.balanceAmount);
-          const used = parseFloat(item.usageAmount);
-          if (Number.isFinite(bal) && bal !== 0) {
-            availableFen = bal;
-            break;
-          }
-          if (Number.isFinite(used) && used !== 0) {
-            // 有些返回 usage 表示已产生费用
-            oweFen = Math.abs(used);
-          }
-        }
-      }
-      if (Number.isFinite(availableFen) && availableFen !== 0) break;
-    }
+  const voiceDomestic = _mkVoiceItem(
+    '国内语音',
+    hasSpecVoice ? Math.max(0, vUsed - specVoice.used) : vUsed,
+    hasSpecVoice ? Math.max(0, vBalance - specVoice.balance) : vBalance,
+    hasSpecVoice ? Math.max(0, vTotal - specVoice.total) : vTotal,
+    showUsedVoice,
+    VOICE_DOM_COLOR
+  );
+
+  let voiceSpecial = null;
+  if (hasSpecVoice && (specVoice.used || specVoice.balance || specVoice.total)) {
+    voiceSpecial = _mkVoiceItem(
+      '专属语音',
+      specVoice.used,
+      specVoice.balance,
+      specVoice.total,
+      showUsedVoice,
+      VOICE_SPEC_COLOR
+    );
   }
-
-  let feeTitle = '剩余话费';
-  let feeYuan = '0.00';
-  let feeColor = COLORS.fee;
-
-  if (Number.isFinite(availableFen) && availableFen < 0) {
-    feeTitle = '当前欠费';
-    feeYuan = (Math.abs(availableFen) / 100).toFixed(2);
-    feeColor = COLORS.error;
-  } else if (Number.isFinite(oweFen) && oweFen > 0) {
-    feeTitle = '当前欠费';
-    feeYuan = (oweFen / 100).toFixed(2);
-    feeColor = COLORS.error;
-  } else if (Number.isFinite(availableFen) && availableFen !== 0) {
-    feeTitle = '剩余话费';
-    feeYuan = (availableFen / 100).toFixed(2);
-    feeColor = COLORS.fee;
-  } else {
-    // 接口只返回 0 时，后付费欠费账号很常见，标题改为提示
-    feeTitle = '账户余额';
-    feeYuan = '0.00';
-    feeColor = COLORS.fee;
-  }
-
-  const fee = {
-    title: feeTitle,
-    number: feeYuan,
-    unit: '元',
-    color: feeColor,
-  };
 
   return {
     fee,
     flowDomestic,
     flowLocal,
     voiceDomestic,
-    voiceLocal,
-    hasLocalFlow,
-    hasLocalVoice,
+    voiceSpecial,
+    // 兼容旧字段
+    flow: flowDomestic,
+    voice: voiceDomestic,
+    hasLocalFlow: !!flowLocal,
+    hasSpecialVoice: !!voiceSpecial,
     updatedAt: Date.now(),
   };
 }
 
-async function tryCookie(ctx, cookie, settings) {
-  const detail = await fetchJson(ctx, URLS.detail, cookie);
-  const balance = await fetchJson(ctx, URLS.balance, cookie);
-  const ds = parseTelecom(detail, balance, settings);
-  ctx.storage.setJSON('ct_datasource', ds);
-  return ds;
+function _notifyAuthFailedOnce(ctx, account, err) {
+  try {
+    const marker = `${account.phone.slice(-4)}:${err && err.resultCode ? err.resultCode : (err && err.message) || ''}`;
+    if (ctx.storage.get('ct_auth_notified') === marker) return;
+    ctx.storage.set('ct_auth_notified', marker);
+    ctx.notify({
+      title: '中国电信',
+      body: `登录失败：${(err && err.message) || '请检查手机号/服务密码/设备ID'}`,
+    });
+  } catch (_) {}
+}
+
+function _clearAuthFlag(ctx) {
+  try {
+    ctx.storage.delete('ct_auth_notified');
+  } catch (_) {}
 }
 
 async function loadData(ctx) {
-  const envCookie = (ctx.env.CT_COOKIE || '').trim();
-  const loginUrl =
-    (ctx.env.CT_LOGIN_URL || '').trim() ||
-    ctx.storage.get('ct_login_url') ||
-    '';
-
   const settings = {
     showUsedFlow: ctx.env.CT_SHOW_USED_FLOW === 'true',
-    filterOrientateFlow: ctx.env.CT_FILTER_ORIENTATE_FLOW === 'true',
+    showUsedVoice: ctx.env.CT_SHOW_USED_VOICE === 'true',
+    showGeneralFlow: ctx.env.CT_SHOW_GENERAL_FLOW !== 'false',
+    showDirectionalFlow: ctx.env.CT_SHOW_DIRECTIONAL_FLOW !== 'false',
+  };
+  const account = _getAccount(ctx);
+  const configured = !!(account.phone && account.password);
+  if (!configured) {
+    return { configured: false, ds: null, fromCache: false, authFailed: false, authError: '' };
+  }
+
+  try {
+    const rawCache = ctx.storage.getJSON('ct_raw');
+    const dsCache = ctx.storage.getJSON('ct_datasource');
+    const at = (rawCache && rawCache.at) || (dsCache && dsCache.updatedAt) || 0;
+    if (at && Date.now() - at < 30 * 60 * 1000) {
+      if (rawCache && rawCache.apiData) {
+        const ds = parseImportantData(rawCache.apiData, settings);
+        ds.updatedAt = at;
+        return { configured, ds, fromCache: false, authFailed: false, authError: '' };
+      }
+      if (dsCache) {
+        return { configured, ds: dsCache, fromCache: false, authFailed: false, authError: '' };
+      }
+    }
+  } catch (_) {}
+
+  let token = '';
+  let cityCode = '';
+  let provinceCode = '';
+  try {
+    token = ctx.storage.get('ct_app_token') || '';
+    cityCode = ctx.storage.get('ct_app_city') || '';
+    provinceCode = ctx.storage.get('ct_app_province') || '';
+  } catch (_) {}
+
+  const _tryFetch = async (tok, city, prov) => {
+    const apiData = await fetchImportantData(ctx, account, tok, city, prov);
+    const ds = parseImportantData(apiData, settings);
+    try {
+      ctx.storage.setJSON('ct_datasource', ds);
+      ctx.storage.setJSON('ct_raw', { apiData, at: ds.updatedAt || Date.now() });
+    } catch (_) {}
+    _clearAuthFlag(ctx);
+    return ds;
   };
 
-  const storedCookie = ctx.storage.get('ct_cookie') || '';
-  const configured = !!(envCookie || loginUrl || storedCookie);
-  let cookie = envCookie || storedCookie;
-
-  // 超过 30 分钟强制用 loginUrl 续期（有 loginUrl 时）
-  const COOKIE_MAX_AGE = 30 * 60 * 1000;
-  const cookieTs = Number(ctx.storage.get('ct_cookie_ts') || 0);
-  const age = Date.now() - cookieTs;
-  const shouldPreRefresh =
-    !envCookie && !!loginUrl && (!cookie || age > COOKIE_MAX_AGE);
-
-  if (shouldPreRefresh) {
+  if (token) {
     try {
-      const fresh = await refreshCookie(ctx);
-      if (fresh) cookie = fresh;
-    } catch (e) {}
-  }
-
-  // 尝试当前 cookie
-  if (cookie) {
-    try {
-      const ds = await tryCookie(ctx, cookie, settings);
-      ctx.storage.set('ct_cookie_ts', String(Date.now()));
-      ctx.storage.set('ct_last_ok', String(Date.now()));
-      return { configured, ds, fromCache: false };
+      const ds = await _tryFetch(token, cityCode, provinceCode);
+      return { configured, ds, fromCache: false, authFailed: false, authError: '' };
     } catch (e) {
-      // 失效 → 刷新
-    }
-  }
-
-  // 失败：loginUrl 刷新后重试（最多 2 次）
-  if (!envCookie && loginUrl) {
-    for (let i = 0; i < 2; i++) {
-      try {
-        const fresh = await refreshCookie(ctx);
-        if (!fresh) break;
-        const ds = await tryCookie(ctx, fresh, settings);
-        ctx.storage.set('ct_last_ok', String(Date.now()));
-        return { configured, ds, fromCache: false };
-      } catch (e) {
-        // 再刷一次
+      if (e && e.transient) {
+        return _fromCache(ctx, configured, settings, false, '');
       }
     }
   }
 
-  // 回退缓存（过期数据也比空白好）
-  const cached = ctx.storage.getJSON('ct_datasource');
-  return {
-    configured,
-    ds: cached || null,
-    fromCache: !!cached,
-  };
+  try {
+    const login = await telecomLogin(ctx, account);
+    const ds = await _tryFetch(login.token, login.cityCode, login.provinceCode);
+    return { configured, ds, fromCache: false, authFailed: false, authError: '' };
+  } catch (e) {
+    if (e && e.transient) {
+      return _fromCache(ctx, configured, settings, false, '');
+    }
+    _notifyAuthFailedOnce(ctx, account, e);
+    return {
+      configured,
+      ds: null,
+      fromCache: false,
+      authFailed: true,
+      authError: (e && e.message) || '登录失败',
+    };
+  }
 }
 
-// ========== UI 组件 ==========
-
-function makeCapsule(title, value, unit) {
-  return {
-    type: 'stack',
-    direction: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    padding: [8, 8, 8, 8],
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    children: [
-      {
-        type: 'text',
-        text: title,
-        font: { size: 'caption2', weight: 'medium' },
-        textColor: COLORS.title,
-        textAlign: 'center',
-        maxLines: 1,
-        minScale: 0.7,
-      },
-      {
-        type: 'stack',
-        direction: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 3,
-        children: [
-          {
-            type: 'text',
-            text: String(value ?? '0'),
-            font: { size: 'title2', weight: 'semibold' },
-            textColor: COLORS.value,
-            textAlign: 'center',
-            maxLines: 1,
-            minScale: 0.65,
-          },
-          {
-            type: 'text',
-            text: unit || '',
-            font: { size: 'caption2', weight: 'regular' },
-            textColor: COLORS.title,
-            maxLines: 1,
-          },
-        ],
-      },
-    ],
-  };
+function _fromCache(ctx, configured, settings, authFailed, authError) {
+  try {
+    const raw = ctx.storage.getJSON('ct_raw');
+    if (raw && raw.apiData) {
+      const ds = parseImportantData(raw.apiData, settings);
+      ds.updatedAt = raw.at || ds.updatedAt;
+      return { configured, ds, fromCache: true, authFailed, authError };
+    }
+  } catch (_) {}
+  try {
+    const cached = ctx.storage.getJSON('ct_datasource');
+    if (cached) return { configured, ds: cached, fromCache: true, authFailed, authError };
+  } catch (_) {}
+  return { configured, ds: null, fromCache: false, authFailed, authError };
 }
 
-function headerRow(title, ds) {
-  const time = ds && ds.updatedAt ? fmtTime(ds.updatedAt) : '--:--';
+/* ---------- UI ---------- */
 
+function mediumCell(icon, color, data) {
+  const numText = `${data.number ?? '0'}${data.unit || ''}`;
   return {
     type: 'stack',
     direction: 'row',
     alignItems: 'center',
+    flex: 1,
+    gap: 8,
+    padding: [8, 10, 8, 10],
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
     children: [
       {
-        type: 'stack',
-        direction: 'row',
-        alignItems: 'center',
-        gap: 6,
-        children: [
-          {
-            type: 'image',
-            src: 'sf-symbol:antenna.radiowaves.left.and.right',
-            color: COLORS.accent,
-            width: 16,
-            height: 16,
-          },
-          {
-            type: 'text',
-            text: title,
-            font: { size: 'headline', weight: 'semibold' },
-            textColor: COLORS.value,
-            maxLines: 1,
-            minScale: 0.75,
-          },
-        ],
+        type: 'image',
+        src: `sf-symbol:${icon}`,
+        width: 22,
+        height: 22,
+        color: color || data.color || FLOW_DOM_COLOR,
       },
-      { type: 'spacer' },
       {
         type: 'stack',
-        direction: 'row',
+        direction: 'column',
         alignItems: 'center',
-        gap: 4,
+        gap: 1,
         children: [
           {
-            type: 'image',
-            src: 'sf-symbol:arrow.clockwise',
-            color: COLORS.time,
-            width: 11,
-            height: 11,
+            type: 'text',
+            text: data.title,
+            font: { size: 'caption2', weight: 'medium' },
+            textColor: COLORS.title,
+            maxLines: 1,
           },
           {
             type: 'text',
-            text: time,
-            font: { size: 'caption2' },
-            textColor: COLORS.time,
+            text: numText,
+            font: { size: 'body', weight: 'bold' },
+            textColor: COLORS.value,
             maxLines: 1,
+            minScale: 0.7,
           },
         ],
       },
@@ -740,141 +596,189 @@ function headerRow(title, ds) {
   };
 }
 
-function buildMainWidget(title, ds) {
-  // 第一行：话费 + 国内语音 + 本地语音（有本地才显示）
-  const topRowChildren = [
-    makeCapsule(ds.fee.title, ds.fee.number, ds.fee.unit),
-    makeCapsule(
-      ds.voiceDomestic.title,
-      ds.voiceDomestic.number,
-      ds.voiceDomestic.unit
-    ),
-  ];
-  if (ds.voiceLocal) {
-    topRowChildren.push(
-      makeCapsule(
-        ds.voiceLocal.title,
-        ds.voiceLocal.number,
-        ds.voiceLocal.unit
-      )
-    );
-  }
+function headerRow(title, ds, fromCache) {
+  const time = ds && ds.updatedAt ? fmtTime(ds.updatedAt) : '--:--';
+  const feeText = `¥${ds?.fee?.number ?? '0.00'}`;
+  return {
+    type: 'stack',
+    direction: 'row',
+    alignItems: 'center',
+    gap: 6,
+    children: [
+      {
+        type: 'image',
+        src: 'sf-symbol:antenna.radiowaves.left.and.right',
+        color: COLORS.accent,
+        width: 16,
+        height: 16,
+      },
+      {
+        type: 'text',
+        text: title,
+        font: { size: 'footnote', weight: 'semibold' },
+        textColor: COLORS.value,
+        maxLines: 1,
+        minScale: 0.8,
+      },
+      {
+        type: 'text',
+        text: feeText,
+        font: { size: 'footnote', weight: 'bold' },
+        color: ds?.fee?.color || FEE_COLOR,
+        maxLines: 1,
+      },
+      { type: 'spacer' },
+      {
+        type: 'text',
+        text: fromCache ? `缓存 ${time}` : `更新 ${time}`,
+        font: { size: 'caption2' },
+        textColor: COLORS.time,
+        maxLines: 1,
+      },
+    ],
+  };
+}
 
-  // 第二行：国内流量 + 本地流量（有本地才显示）
-  const bottomRowChildren = [
-    makeCapsule(
-      ds.flowDomestic.title,
-      ds.flowDomestic.number,
-      ds.flowDomestic.unit
-    ),
+function buildMainWidget(title, ds, fromCache) {
+  const flowRow = [
+    mediumCell('antenna.radiowaves.left.and.right', FLOW_DOM_COLOR, ds.flowDomestic || ds.flow),
   ];
   if (ds.flowLocal) {
-    bottomRowChildren.push(
-      makeCapsule(
-        ds.flowLocal.title,
-        ds.flowLocal.number,
-        ds.flowLocal.unit
-      )
-    );
+    flowRow.push(mediumCell('wifi', FLOW_LOC_COLOR, ds.flowLocal));
+  }
+
+  const voiceRow = [
+    mediumCell('phone.circle.fill', VOICE_DOM_COLOR, ds.voiceDomestic || ds.voice),
+  ];
+  if (ds.voiceSpecial) {
+    voiceRow.push(mediumCell('phone.fill', VOICE_SPEC_COLOR, ds.voiceSpecial));
   }
 
   return {
     type: 'widget',
     backgroundColor: COLORS.bg,
-    padding: [10, 14, 10, 14],
-    gap: 10,
-    refreshAfter: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    padding: [10, 12, 10, 12],
+    gap: 8,
+    refreshAfter: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     children: [
-      headerRow(title, ds),
+      headerRow(title, ds, fromCache),
+      { type: 'stack', direction: 'row', gap: 8, children: flowRow },
+      { type: 'stack', direction: 'row', gap: 8, children: voiceRow },
+    ],
+  };
+}
+
+function smallRow(color, symbol, glyph, value, unit, label) {
+  const iconChild = symbol
+    ? {
+        type: 'image',
+        src: symbol,
+        color: '#FFFFFF',
+        width: 16,
+        height: 16,
+      }
+    : {
+        type: 'text',
+        text: glyph,
+        font: { size: 'headline', weight: 'bold' },
+        textColor: '#FFFFFF',
+      };
+
+  return {
+    type: 'stack',
+    direction: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    padding: [4, 8, 4, 8],
+    backgroundColor: { light: color + '40', dark: color + '33' },
+    borderRadius: 14,
+    children: [
       {
         type: 'stack',
         direction: 'row',
         alignItems: 'center',
-        gap: 9,
-        children: topRowChildren,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: { light: color, dark: color + '60' },
+        children: [iconChild],
       },
       {
         type: 'stack',
-        direction: 'row',
-        alignItems: 'center',
-        gap: 9,
-        children: bottomRowChildren,
+        direction: 'column',
+        flex: 1,
+        children: [
+          {
+            type: 'stack',
+            direction: 'row',
+            alignItems: 'center',
+            gap: 3,
+            children: [
+              {
+                type: 'text',
+                text: String(value),
+                font: { size: 'title3', weight: 'bold' },
+                textColor: color,
+                maxLines: 1,
+                minScale: 0.5,
+              },
+              {
+                type: 'text',
+                text: String(unit),
+                font: { size: 'caption1', weight: 'semibold' },
+                textColor: color,
+                maxLines: 1,
+              },
+              { type: 'spacer' },
+            ],
+          },
+          {
+            type: 'text',
+            text: String(label),
+            font: { size: 'caption2', weight: 'medium' },
+            textColor: color + 'B3',
+            maxLines: 1,
+            minScale: 0.7,
+          },
+        ],
       },
     ],
   };
 }
 
-function buildSmall(title, ds) {
-  // 小尺寸优先显示话费 + 国内流量 + 国内语音
+function buildSmall(title, ds, fromCache) {
   const children = [
-    headerRow(title, ds),
-    {
-      type: 'stack',
-      direction: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: [8, 12, 8, 12],
-      backgroundColor: COLORS.card,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      children: [
-        {
-          type: 'text',
-          text: ds.fee.title,
-          font: { size: 'caption2', weight: 'medium' },
-          textColor: COLORS.title,
-        },
-        {
-          type: 'stack',
-          direction: 'row',
-          alignItems: 'center',
-          gap: 2,
-          children: [
-            {
-              type: 'text',
-              text: ds.fee.number,
-              font: { size: 'title2', weight: 'bold' },
-              textColor: COLORS.fee,
-            },
-            {
-              type: 'text',
-              text: ds.fee.unit,
-              font: { size: 'caption2' },
-              textColor: COLORS.title,
-            },
-          ],
-        },
-      ],
-    },
-    {
-      type: 'stack',
-      direction: 'row',
-      gap: 6,
-      children: [
-        makeCapsule(
-          ds.voiceDomestic.title,
-          ds.voiceDomestic.number,
-          ds.voiceDomestic.unit
-        ),
-        makeCapsule(
-          ds.flowDomestic.title,
-          ds.flowDomestic.number,
-          ds.flowDomestic.unit
-        ),
-      ],
-    },
+    smallRow(
+      '#E8651F',
+      null,
+      '¥',
+      ds.fee.number,
+      ds.fee.unit,
+      ds.fee.title
+    ),
+    smallRow(
+      '#4DA6F0',
+      'sf-symbol:antenna.radiowaves.left.and.right',
+      '',
+      (ds.flowDomestic || ds.flow).number,
+      (ds.flowDomestic || ds.flow).unit,
+      (ds.flowDomestic || ds.flow).title
+    ),
+    smallRow(
+      '#55C759',
+      'sf-symbol:phone.and.waveform.fill',
+      '',
+      (ds.voiceDomestic || ds.voice).number,
+      (ds.voiceDomestic || ds.voice).unit,
+      (ds.voiceDomestic || ds.voice).title
+    ),
   ];
 
-  // 如果有本地数据，小尺寸用更紧凑方式提示
-  if (ds.hasLocalFlow || ds.hasLocalVoice) {
+  if (ds.flowLocal || ds.voiceSpecial) {
     const tips = [];
-    if (ds.voiceLocal) {
-      tips.push(`本地语音 ${ds.voiceLocal.number}分`);
-    }
-    if (ds.flowLocal) {
-      tips.push(`本地流量 ${ds.flowLocal.number}${ds.flowLocal.unit}`);
-    }
+    if (ds.flowLocal) tips.push(`本地流量 ${ds.flowLocal.number}${ds.flowLocal.unit}`);
+    if (ds.voiceSpecial) tips.push(`专属语音 ${ds.voiceSpecial.number}分`);
     children.push({
       type: 'text',
       text: tips.join(' · '),
@@ -889,49 +793,99 @@ function buildSmall(title, ds) {
   return {
     type: 'widget',
     backgroundColor: COLORS.bg,
-    padding: [10, 12, 10, 12],
-    gap: 8,
-    refreshAfter: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    padding: [10, 10, 10, 10],
+    gap: 6,
+    refreshAfter: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     children,
   };
 }
 
 function buildLockScreen(title, ds, family) {
-  if (family === 'accessoryCircular' || family === 'accessoryInline') {
+  const SUB = { light: '#FFFFFFB3', dark: '#FFFFFFB3' };
+  const flow = ds.flowDomestic || ds.flow;
+  const voice = ds.voiceDomestic || ds.voice;
+
+  if (family === 'accessoryInline') {
     return {
       type: 'widget',
       children: [
         {
           type: 'text',
-          text: `¥${ds.fee.number}`,
-          font: { size: 'body', weight: 'semibold' },
-          textAlign: 'center',
+          text: `${title} ${ds.fee.number}${ds.fee.unit} · ${flow.number}${flow.unit}`,
+          font: { size: 'caption1', weight: 'medium' },
+          maxLines: 1,
+          minScale: 0.5,
         },
       ],
     };
   }
 
-  const parts = [`¥${ds.fee.number}`];
-  parts.push(`${ds.flowDomestic.number}${ds.flowDomestic.unit}`);
-  parts.push(`${ds.voiceDomestic.number}分`);
+  if (family === 'accessoryCircular') {
+    return {
+      type: 'widget',
+      padding: 2,
+      children: [
+        { type: 'spacer' },
+        {
+          type: 'text',
+          text: `${flow.number}`,
+          font: { size: 'headline', weight: 'bold' },
+          textAlign: 'center',
+          maxLines: 1,
+          minScale: 0.5,
+        },
+        {
+          type: 'text',
+          text: flow.unit,
+          font: { size: 'caption2' },
+          textColor: SUB,
+          textAlign: 'center',
+          maxLines: 1,
+        },
+        { type: 'spacer' },
+      ],
+    };
+  }
 
-  return {
-    type: 'widget',
-    padding: 8,
-    gap: 3,
+  const line = (label, value, unit) => ({
+    type: 'stack',
+    direction: 'row',
+    alignItems: 'center',
+    gap: 4,
     children: [
       {
         type: 'text',
-        text: title,
-        font: { size: 'caption2', weight: 'semibold' },
+        text: label,
+        font: { size: 'caption2', weight: 'medium' },
+        textColor: SUB,
+        maxLines: 1,
+      },
+      { type: 'spacer' },
+      {
+        type: 'text',
+        text: String(value),
+        font: { size: 'caption1', weight: 'bold' },
+        maxLines: 1,
+        minScale: 0.6,
       },
       {
         type: 'text',
-        text: parts.join(' · '),
-        font: { size: 'footnote' },
+        text: String(unit),
+        font: { size: 'caption2' },
+        textColor: SUB,
         maxLines: 1,
-        minScale: 0.55,
       },
+    ],
+  });
+
+  return {
+    type: 'widget',
+    padding: 2,
+    gap: 2,
+    children: [
+      line('话费', ds.fee.number, ds.fee.unit),
+      line('流量', flow.number, flow.unit),
+      line('语音', voice.number, voice.unit),
     ],
   };
 }
@@ -939,7 +893,6 @@ function buildLockScreen(title, ds, family) {
 function buildError(title, message, url) {
   const w = {
     type: 'widget',
-    backgroundColor: COLORS.bg,
     padding: 14,
     gap: 9,
     children: [
@@ -978,7 +931,7 @@ function buildError(title, message, url) {
         alignItems: 'center',
         gap: 5,
         padding: [6, 10, 6, 10],
-        backgroundColor: COLORS.card,
+        backgroundColor: COLORS.capsuleBg,
         borderRadius: 10,
         borderWidth: 1,
         borderColor: COLORS.border,
@@ -992,7 +945,7 @@ function buildError(title, message, url) {
           },
           {
             type: 'text',
-            text: '请在 Safari 登录电信账号',
+            text: '请在模块设置里检查账号',
             font: { size: 'caption2' },
             textColor: COLORS.time,
             maxLines: 1,
@@ -1002,119 +955,41 @@ function buildError(title, message, url) {
       },
     ],
   };
-
   if (url) w.url = url;
   return w;
 }
 
-function getReqCookie(headers) {
-  if (!headers) return '';
-  if (typeof headers.get === 'function') {
-    return headers.get('cookie') || headers.get('Cookie') || '';
-  }
-  for (const k of Object.keys(headers)) {
-    if (String(k).toLowerCase() === 'cookie') {
-      return headers[k] || '';
-    }
-  }
-  return '';
-}
-
-async function handleCapture(ctx) {
-  const req = ctx.request || {};
-  const url = req.url || '';
-
-  if (!url.includes('e.dlife.cn') && !url.includes('e.189.cn')) return;
-
-  // 捕获登录中间页 → 保存可续期的 loginUrl
-  if (url.includes('/user/loginMiddle') || url.includes('loginMiddle')) {
-    const loginUrl = (url.match(/(http.+)&sign/) || [])[1] || url;
-    if (loginUrl) {
-      ctx.storage.set('ct_login_url', loginUrl);
-      ctx.storage.set('ct_login_ts', String(Date.now()));
-    }
-  }
-
-  // 任意访问都合并请求里的 Cookie（全站保活）
-  const cookie = String(getReqCookie(req.headers) || '').trim();
-  if (cookie) {
-    const before = ctx.storage.get('ct_cookie') || '';
-    const merged = saveCookie(ctx, cookie);
-    const ts = Number(ctx.storage.get('ct_login_ts') || 0);
-    // 登录后 10 分钟内首次写入 → 通知成功
-    if (
-      merged &&
-      merged !== before &&
-      ts > 0 &&
-      Date.now() - ts < 10 * 60 * 1000
-    ) {
-      ctx.storage.delete('ct_login_ts');
-      ctx.notify({
-        title: '中国电信',
-        body: '登录成功，Cookie 已保存，小组件将自动更新',
-        action: { type: 'clipboard', text: merged },
-      });
-    }
-  }
-}
-
 async function handleWidget(ctx) {
-  const title = (ctx.env.CT_TITLE || '中国电信').trim() || '中国电信';
+  const safeCtx = ctx || {};
+  const env = safeCtx.env || {};
+  const title = (env.CT_TITLE || '中国电信').trim() || '中国电信';
 
-  const { configured, ds } = await loadData(ctx);
+  let result;
+  try {
+    result = await loadData(safeCtx);
+  } catch (e) {
+    return buildError(title, '数据获取失败', '');
+  }
+
+  const { configured, ds, fromCache, authFailed, authError } = result;
 
   if (!configured) {
-    return buildError(
-      title,
-      '未登录：在 Safari 打开 e.dlife.cn 登录一次',
-      URLS.login
-    );
+    return buildError(title, '未配置：请在模块设置里填手机号和服务密码', '');
+  }
+  if (authFailed || !ds) {
+    return buildError(title, authError || '登录失败，请检查手机号/服务密码/设备ID', '');
   }
 
-  if (!ds) {
-    return buildError(title, '数据获取失败，请检查网络或重新登录');
-  }
-
-  const family = ctx.widgetFamily || 'systemSmall';
-
-  if (
-    family === 'systemMedium' ||
-    family === 'systemLarge' ||
-    family === 'systemExtraLarge'
-  ) {
-    return buildMainWidget(title, ds);
-  }
-
-  if (family.startsWith('accessory')) {
-    return buildLockScreen(title, ds, family);
-  }
-
-  return buildSmall(title, ds);
+  const family = safeCtx.widgetFamily || '';
+  if (family === 'systemSmall') return buildSmall(title, ds, fromCache);
+  if (family.startsWith('accessory')) return buildLockScreen(title, ds, family);
+  return buildMainWidget(title, ds, fromCache);
 }
 
 export default async function (ctx) {
-  // request 脚本：捕获 Cookie / loginUrl
-  if (ctx.request && ctx.request.url) {
-    return handleCapture(ctx);
+  const safeCtx = ctx || {};
+  if (safeCtx.request && safeCtx.request.url) {
+    return { type: 'text', text: 'app login mode, no capture' };
   }
-  // schedule 定时任务：无 widgetFamily，只拉数据续 session
-  if (!ctx.widgetFamily) {
-    try {
-      await loadData(ctx);
-      // 额外用当前 cookie 访问首页，进一步续期
-      const cookie = ctx.storage.get('ct_cookie') || '';
-      if (cookie) {
-        try {
-          await ctx.http.get(URLS.login, {
-            redirect: 'manual',
-            timeout: 10000,
-            credentials: 'omit',
-            headers: { 'User-Agent': UA, Cookie: cookie },
-          });
-        } catch (_) {}
-      }
-    } catch (_) {}
-    return { type: 'text', text: 'keepalive ok' };
-  }
-  return handleWidget(ctx);
+  return handleWidget(safeCtx);
 }
