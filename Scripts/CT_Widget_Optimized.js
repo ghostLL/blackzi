@@ -332,7 +332,7 @@ function card(label,value,unit,bg,color) {
     padding:[7,8,7,8],backgroundColor:bg,borderRadius:11,gap:3,
     children:[
       makeText(label,'caption2',color,'medium'),
-      {type:'stack',direction:'row',alignItems:'baseline',gap:3,children:[
+      {type:'stack',direction:'row',alignItems:'center',gap:3,children:[
         makeText(value,'title3',color,'bold'),
         makeText(unit,'caption2',color,'regular'),
       ]},
@@ -362,7 +362,7 @@ function buildMedium(title,ds,fromCache) {
          {type:'image',src:'sf-symbol:creditcard.fill',color:{light:c.light.fee,dark:c.dark.fee},width:17,height:17},
          {type:'stack',direction:'column',gap:1,children:[
            makeText('话费余额','caption2',{light:c.light.fee,dark:c.dark.fee},'medium'),
-           {type:'stack',direction:'row',alignItems:'baseline',gap:3,children:[
+           {type:'stack',direction:'row',alignItems:'center',gap:3,children:[
              makeText(fee.number==='--'?'--':`¥ ${fee.number}`,'title2',{light:c.light.fee,dark:c.dark.fee},'bold'),
              ...(fee.number==='--'?[ ]:[makeText('元','caption2',{light:c.light.fee,dark:c.dark.fee})]),
            ]},
