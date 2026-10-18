@@ -32,7 +32,7 @@ compat_arguments_schema:
 scriptings:
   - generic:
       name: china-telecom-widget
-      script_url: https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/egern-ct-widget/main/CT_Widget_Optimized.JS
+      script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget_Optimized.js
       env:
         CT_PHONE: '{{{ctPhone}}}'
         CT_PASSWORD: '{{{ctPassword}}}'
@@ -42,7 +42,7 @@ scriptings:
   - schedule:
       name: 中国电信缓存刷新
       cron: '*/30 * * * *'
-      script_url: https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/egern-ct-widget/main/CT_Widget_Optimized.JS
+      script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget_Optimized.js
 
 widgets:
   - name: china-telecom-widget
