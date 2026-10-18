@@ -347,69 +347,77 @@ function buildMedium(title,ds,fromCache) {
   const lf=ds.localFlow||{number:'--',unit:'GB'};
   const nf=ds.nationalFlow||{number:'--',unit:'GB'};
 
-  const dualCard = (label,value,unit,bg,color,symbol) => ({
-    type:'stack', direction:'column', alignItems:'start', flex:1,
-    padding:[6,9,6,9], backgroundColor:bg, borderRadius:10, gap:3,
+  const txt=(text,size,color,weight='regular') => ({
+    type:'text',text:String(text),font:{size,weight},textColor:color,
+    maxLines:1,minScale:0.6
+  });
+  const card=(label,value,unit,bg,color,symbol)=>({
+    type:'stack',direction:'column',alignItems:'start',
+    width:'100%',padding:[6,9,6,9],backgroundColor:bg,borderRadius:11,gap:3,
     children:[
-      {type:'stack',direction:'row',alignItems:'center',gap:4,children:[
+      {type:'stack',direction:'row',alignItems:'center',gap:5,children:[
         {type:'image',src:`sf-symbol:${symbol}`,color,width:12,height:12},
-        makeText(label,'caption2',color,'medium')
+        txt(label,'caption2',color,'medium')
       ]},
       {type:'stack',direction:'row',alignItems:'center',gap:4,children:[
-        makeText(value,'title3',color,'bold'),
-        makeText(unit,'caption2',color,'regular')
+        txt(value,'title3',color,'bold'),txt(unit,'caption2',color)
       ]}
     ]
   });
 
   return {
-    type:'widget', padding:[9,11,9,11], gap:6,
+    type:'widget',
+    padding:[10,12,10,12],
+    gap:7,
     refreshAfter:new Date(Date.now()+60*60*1000).toISOString(),
     children:[
-      {type:'stack',direction:'row',alignItems:'center',gap:6,children:[
+      // Header
+      {type:'stack',direction:'row',alignItems:'center',gap:6,width:'100%',children:[
         {type:'image',src:'sf-symbol:antenna.radiowaves.left.and.right',
          color:{light:c.light.accent,dark:c.dark.accent},width:17,height:17},
-        {type:'text',text:title,font:{size:'headline',weight:'semibold'},
-         textColor:{light:c.light.value,dark:c.dark.value},maxLines:1,minScale:0.7},
+        txt(title,'headline',{light:c.light.value,dark:c.dark.value},'semibold'),
         {type:'spacer'},
-        makeText(`${fromCache?'缓存':'更新'} ${timeText(ds.updatedAt)}`,'caption2',
+        txt(`${fromCache?'缓存':'更新'} ${timeText(ds.updatedAt)}`,'caption2',
           {light:c.light.muted,dark:c.dark.muted})
       ]},
-      {type:'stack',direction:'row',alignItems:'center',gap:9,
-       padding:[7,11,7,11],
-       backgroundColor:{light:c.light.feeBg,dark:c.dark.feeBg},
-       borderRadius:10,
+
+      // Full-width balance banner; explicit width prevents intrinsic-size shrink.
+      {type:'stack',direction:'row',alignItems:'center',gap:10,
+       width:'100%',padding:[8,12,8,12],
+       backgroundColor:{light:c.light.feeBg,dark:c.dark.feeBg},borderRadius:11,
        children:[
          {type:'image',src:'sf-symbol:creditcard.fill',
-          color:{light:c.light.fee,dark:c.dark.fee},width:21,height:21},
-         {type:'stack',direction:'column',gap:1,children:[
-           makeText('话费余额','caption2',{light:c.light.fee,dark:c.dark.fee},'medium'),
-           {type:'stack',direction:'row',alignItems:'center',gap:3,children:[
-             makeText(fee.number==='--'?'--':`¥ ${fee.number}`,'title2',
-               {light:c.light.fee,dark:c.dark.fee},'bold'),
-             ...(fee.number==='--'?[]:[makeText('元','caption2',
-               {light:c.light.fee,dark:c.dark.fee})])
-           ]}
+          color:{light:c.light.fee,dark:c.dark.fee},width:22,height:22},
+         {type:'stack',direction:'column',alignItems:'start',gap:1,flex:1,children:[
+           txt('话费余额','caption2',{light:c.light.fee,dark:c.dark.fee},'medium'),
+           txt(fee.number==='--'?'--':`¥ ${fee.number}`,'title2',
+             {light:c.light.fee,dark:c.dark.fee},'bold')
          ]},
-         {type:'spacer'},
          {type:'image',src:'sf-symbol:wallet.bifold',
-          color:{light:c.light.fee,dark:c.dark.fee},width:18,height:18}
+          color:{light:c.light.fee,dark:c.dark.fee},width:19,height:19}
        ]},
-      {type:'stack',direction:'row',alignItems:'stretch',gap:7,flex:1,children:[
-        dualCard('本地通话',lv.number,'分钟',
-          {light:c.light.localVoiceBg,dark:c.dark.localVoiceBg},
-          {light:c.light.localVoice,dark:c.dark.localVoice},'phone'),
-        dualCard('全国通话',nv.number,'分钟',
-          {light:c.light.nationalVoiceBg,dark:c.dark.nationalVoiceBg},
-          {light:c.light.nationalVoice,dark:c.dark.nationalVoice},'phone.fill')
+
+      // Fixed compact two-column rows avoid card overlap in medium widget.
+      {type:'stack',direction:'row',alignItems:'center',gap:7,width:'100%',children:[
+        {type:'stack',direction:'column',alignItems:'start',flex:1,width:'50%',
+         children:[card('本地通话',lv.number,'分钟',
+           {light:c.light.localVoiceBg,dark:c.dark.localVoiceBg},
+           {light:c.light.localVoice,dark:c.dark.localVoice},'phone')]},
+        {type:'stack',direction:'column',alignItems:'start',flex:1,width:'50%',
+         children:[card('全国通话',nv.number,'分钟',
+           {light:c.light.nationalVoiceBg,dark:c.dark.nationalVoiceBg},
+           {light:c.light.nationalVoice,dark:c.dark.nationalVoice},'phone.fill')]}
       ]},
-      {type:'stack',direction:'row',alignItems:'stretch',gap:7,flex:1,children:[
-        dualCard('本地流量',lf.number,lf.unit||'GB',
-          {light:c.light.localFlowBg,dark:c.dark.localFlowBg},
-          {light:c.light.localFlow,dark:c.dark.localFlow},'antenna.radiowaves.left.and.right'),
-        dualCard('全国流量',nf.number,nf.unit||'GB',
-          {light:c.light.nationalFlowBg,dark:c.dark.nationalFlowBg},
-          {light:c.dark.nationalFlow,dark:c.dark.nationalFlow},'globe.asia.australia.fill')
+
+      {type:'stack',direction:'row',alignItems:'center',gap:7,width:'100%',children:[
+        {type:'stack',direction:'column',alignItems:'start',flex:1,width:'50%',
+         children:[card('本地流量',lf.number,lf.unit||'GB',
+           {light:c.light.localFlowBg,dark:c.dark.localFlowBg},
+           {light:c.light.localFlow,dark:c.dark.localFlow},'antenna.radiowaves.left.and.right')]},
+        {type:'stack',direction:'column',alignItems:'start',flex:1,width:'50%',
+         children:[card('全国流量',nf.number,nf.unit||'GB',
+           {light:c.light.nationalFlowBg,dark:c.dark.nationalFlowBg},
+           {light:c.light.nationalFlow,dark:c.dark.nationalFlow},'globe')] }
       ]}
     ]
   };
