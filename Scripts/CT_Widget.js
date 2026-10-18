@@ -11,6 +11,7 @@
 const URLS = {
   login: 'https://appgologin.189.cn:9031/login/client/userLoginNormal',
   query: 'https://appfuwu.189.cn:9021/query/qryImportantData',
+  flux: 'https://appfuwu.189.cn:9021/query/userFluxPackage',
 };
 
 const FLOW_DOM_COLOR = '#0A84FF';
@@ -241,8 +242,88 @@ async function fetchImportantData(ctx, account, token, cityCode, provinceCode) {
   return dataResp.responseData.data;
 }
 
+async function fetchUserFluxPackage(ctx, account, token) {
+  const ts = getBeijingTimestamp();
+  const body = {
+    content: {
+      fieldData: {
+        queryFlag: '0',
+        accessAuth: '1',
+        account: transNumber(account.phone),
+      },
+      attach: 'test',
+    },
+    headerInfos: {
+      code: 'userFluxPackage',
+      clientType: '#12.2.0#channel50#iPhone 14 Pro#',
+      timestamp: ts,
+      shopId: '20002',
+      source: '110003',
+      sourcePassword: 'Sid98s',
+      userLoginName: transNumber(account.phone),
+      token,
+    },
+  };
+  try {
+    const resp = await _postJson(ctx, URLS.flux, body);
+    return (resp && resp.responseData && resp.responseData.data) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function isLocalName(name = '') {
   return /本地|省内|本市|本省/.test(String(name));
+}
+
+// 专属语音：专属/专用/定向，以及原先「本地」类语音包
+function isSpecialVoiceName(name = '') {
+  return /专属|专用|定向|本地|省内|本市|本省/.test(String(name));
+}
+
+// 递归收集对象里所有数组项
+function _collectArrayItems(root) {
+  const out = [];
+  const walk = (node, depth) => {
+    if (!node || depth > 8) return;
+    if (Array.isArray(node)) {
+      for (const it of node) {
+        if (it && typeof it === 'object') {
+          out.push(it);
+          walk(it, depth + 1);
+        }
+      }
+      return;
+    }
+    if (typeof node === 'object') {
+      for (const k of Object.keys(node)) walk(node[k], depth + 1);
+    }
+  };
+  walk(root, 0);
+  return out;
+}
+
+function _itemName(it) {
+  return (
+    it.title ||
+    it.name ||
+    it.ratableResourcename ||
+    it.productOffName ||
+    it.offerName ||
+    it.flowName ||
+    it.voiceName ||
+    it.pkgName ||
+    ''
+  );
+}
+
+function _isVoiceItem(it) {
+  const name = _itemName(it);
+  const unit = String(it.unitTypeId ?? it.unitType ?? it.unit ?? it.unitName ?? '');
+  // unitTypeId 1 通常为语音分钟
+  if (unit == 1 || unit === '1' || /分钟|语音|通话/.test(unit)) return true;
+  if (/语音|通话|分钟/.test(name) && !/流量|GB|MB/.test(name)) return true;
+  return false;
 }
 
 function _pickFlow(obj) {
@@ -377,26 +458,30 @@ function parseImportantData(apiData, opts) {
     voiceInfo.balance !== undefined ? voiceInfo.balance : Math.max(0, vTotal - vUsed)
   );
 
-  // 专属语音：明细名含 专属 / 专用 / 定向
+  // 从 qryImportantData + userFluxPackage 明细里拆专属语音
   let specVoice = { used: 0, balance: 0, total: 0 };
   let hasSpecVoice = false;
-  const vLists = [];
-  const vi = apiData && apiData.voiceInfo;
-  if (vi) {
-    for (const k of Object.keys(vi)) {
-      const v = vi[k];
-      if (Array.isArray(v)) vLists.push(...v);
-    }
-  }
-  for (const it of vLists) {
-    const name = it.title || it.name || it.ratableResourcename || '';
-    if (!/专属|专用|定向/.test(String(name))) continue;
+  const pkgData = opts.packageData || null;
+  const allItems = [
+    ..._collectArrayItems(apiData && apiData.voiceInfo),
+    ..._collectArrayItems(pkgData),
+  ];
+  for (const it of allItems) {
+    if (!_isVoiceItem(it) && !isSpecialVoiceName(_itemName(it))) continue;
+    const name = _itemName(it);
+    // 明确是流量的跳过
+    if (/流量|GB|MB|流量包/.test(name) && !/语音|通话/.test(name)) continue;
+    if (!isSpecialVoiceName(name) && !_isVoiceItem(it)) continue;
+    if (!isSpecialVoiceName(name)) continue;
+
+    const u = _safeN(it.used ?? it.usageAmount ?? it.usedAmount);
+    const b = _safeN(it.balance ?? it.balanceAmount ?? it.remainAmount);
+    const t = _safeN(it.total ?? it.ratableAmount ?? it.totalAmount ?? u + b);
+    if (!u && !b && !t) continue;
     hasSpecVoice = true;
-    specVoice.used += _safeN(it.used ?? it.usageAmount);
-    specVoice.balance += _safeN(it.balance ?? it.balanceAmount);
-    specVoice.total += _safeN(
-      it.total ?? it.ratableAmount ?? (_safeN(it.used) + _safeN(it.balance))
-    );
+    specVoice.used += u;
+    specVoice.balance += b;
+    specVoice.total += t;
   }
 
   const voiceDomestic = _mkVoiceItem(
@@ -470,15 +555,14 @@ async function loadData(ctx) {
     const rawCache = ctx.storage.getJSON('ct_raw');
     const dsCache = ctx.storage.getJSON('ct_datasource');
     const at = (rawCache && rawCache.at) || (dsCache && dsCache.updatedAt) || 0;
-    if (at && Date.now() - at < 30 * 60 * 1000) {
-      if (rawCache && rawCache.apiData) {
-        const ds = parseImportantData(rawCache.apiData, settings);
-        ds.updatedAt = at;
-        return { configured, ds, fromCache: false, authFailed: false, authError: '' };
-      }
-      if (dsCache) {
-        return { configured, ds: dsCache, fromCache: false, authFailed: false, authError: '' };
-      }
+    // 旧缓存没有 packageData 时强制刷新，以便拆出专属语音
+    if (at && Date.now() - at < 30 * 60 * 1000 && rawCache && rawCache.apiData && rawCache.packageData) {
+      const ds = parseImportantData(rawCache.apiData, {
+        ...settings,
+        packageData: rawCache.packageData,
+      });
+      ds.updatedAt = at;
+      return { configured, ds, fromCache: false, authFailed: false, authError: '' };
     }
   } catch (_) {}
 
@@ -493,10 +577,16 @@ async function loadData(ctx) {
 
   const _tryFetch = async (tok, city, prov) => {
     const apiData = await fetchImportantData(ctx, account, tok, city, prov);
-    const ds = parseImportantData(apiData, settings);
+    // 套餐明细：用于拆分专属语音（qryImportantData 往往只有汇总）
+    const packageData = await fetchUserFluxPackage(ctx, account, tok);
+    const ds = parseImportantData(apiData, { ...settings, packageData });
     try {
       ctx.storage.setJSON('ct_datasource', ds);
-      ctx.storage.setJSON('ct_raw', { apiData, at: ds.updatedAt || Date.now() });
+      ctx.storage.setJSON('ct_raw', {
+        apiData,
+        packageData,
+        at: ds.updatedAt || Date.now(),
+      });
     } catch (_) {}
     _clearAuthFlag(ctx);
     return ds;
@@ -536,7 +626,10 @@ function _fromCache(ctx, configured, settings, authFailed, authError) {
   try {
     const raw = ctx.storage.getJSON('ct_raw');
     if (raw && raw.apiData) {
-      const ds = parseImportantData(raw.apiData, settings);
+      const ds = parseImportantData(raw.apiData, {
+        ...settings,
+        packageData: raw.packageData || null,
+      });
       ds.updatedAt = raw.at || ds.updatedAt;
       return { configured, ds, fromCache: true, authFailed, authError };
     }
