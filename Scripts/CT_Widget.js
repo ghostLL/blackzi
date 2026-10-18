@@ -476,42 +476,93 @@ function parseImportantData(apiData, opts) {
     voiceInfo.balance !== undefined ? voiceInfo.balance : Math.max(0, vTotal - vUsed)
   );
 
-  // 2) 从套餐明细拆分：unitTypeId==1 的语音项
   let genVoice = { used: 0, balance: 0, total: 0 };
   let specVoice = { used: 0, balance: 0, total: 0 };
   let hasGen = false;
   let hasSpec = false;
-
   const pkgData = opts.packageData || null;
-  const allItems = [
-    ..._collectArrayItems(apiData),
-    ..._collectArrayItems(pkgData),
-  ];
 
-  for (const it of allItems) {
-    if (!_isVoiceItem(it)) continue;
-    const name = _itemName(it);
-    if (/流量|GB|MB/.test(name) && !/语音|通话/.test(name)) continue;
-    const amt = _voiceAmounts(it);
-    if (!amt) continue;
+  // 2) 解析 userFluxPackage：productOFFRatable.ratableResourcePackages
+  //    包 title 如「国内」「本地」「专用」；子项 leftHighlight=剩余数字
+  const parseHighlightMinutes = (product, packTitle) => {
+    const highlight = String(product.leftHighlight ?? product.rightHighlight ?? '').replace(/,/g, '');
+    const n = parseFloat(highlight);
+    if (!Number.isFinite(n)) return null;
+    const unitStr = String(
+      product.rightCommon || product.leftTitle || product.title || product.unit || packTitle || ''
+    );
+    if (/GB|MB|流量/.test(unitStr) && !/分钟/.test(unitStr)) return null;
+    if (/分钟|语音|通话/.test(unitStr)) return Math.round(n);
+    if (n <= 30000 && /语音|通话|分钟/.test(String(product.title || packTitle || ''))) {
+      return Math.round(n);
+    }
+    // 父包标题含本地/专属且数值像分钟
+    if (n <= 30000 && isSpecialVoiceName(packTitle) && !/流量|GB|MB/.test(unitStr)) {
+      return Math.round(n);
+    }
+    return null;
+  };
 
-    // 优先按名称分类：专属/本地 → 专属；其余语音项 → 通用
-    if (isSpecialVoiceName(name)) {
-      hasSpec = true;
-      specVoice.used += amt.used;
-      specVoice.balance += amt.balance;
-      specVoice.total += amt.total;
-    } else {
-      hasGen = true;
-      genVoice.used += amt.used;
-      genVoice.balance += amt.balance;
-      genVoice.total += amt.total;
+  const packages =
+    (pkgData &&
+      pkgData.productOFFRatable &&
+      pkgData.productOFFRatable.ratableResourcePackages) ||
+    (pkgData && pkgData.ratableResourcePackages) ||
+    [];
+
+  if (Array.isArray(packages) && packages.length) {
+    for (const pack of packages) {
+      const packTitle = String(pack.title || pack.name || '');
+      const products = pack.productInfos || pack.products || [];
+      for (const p of products) {
+        const mins = parseHighlightMinutes(p, packTitle);
+        if (mins === null) continue;
+        const used = _safeN(p.used ?? p.usageAmount ?? p.usedValue);
+        const total = _safeN(p.total ?? p.ratableAmount ?? p.totalValue) || used + mins;
+        const name = `${packTitle} ${p.title || p.name || ''}`;
+        if (isSpecialVoiceName(name) || isSpecialVoiceName(packTitle)) {
+          hasSpec = true;
+          specVoice.balance += mins;
+          specVoice.used += used;
+          specVoice.total += total || mins;
+        } else if (
+          isGeneralVoiceName(name) ||
+          isGeneralVoiceName(packTitle) ||
+          /语音|通话|分钟/.test(name)
+        ) {
+          hasGen = true;
+          genVoice.balance += mins;
+          genVoice.used += used;
+          genVoice.total += total || mins;
+        }
+      }
     }
   }
 
-  // 若明细里同时扫到通用和专属，以明细为准；
-  // 若只有一类明细，另一类用「汇总 − 明细」补齐；
-  // 若完全没有明细，只显示汇总为通用语音。
+  // 3) 回退：递归扫 unitTypeId==1
+  if (!hasGen && !hasSpec) {
+    const allItems = [..._collectArrayItems(apiData), ..._collectArrayItems(pkgData)];
+    for (const it of allItems) {
+      if (!_isVoiceItem(it)) continue;
+      const name = _itemName(it);
+      if (/流量|GB|MB/.test(name) && !/语音|通话/.test(name)) continue;
+      const amt = _voiceAmounts(it);
+      if (!amt) continue;
+      if (isSpecialVoiceName(name)) {
+        hasSpec = true;
+        specVoice.used += amt.used;
+        specVoice.balance += amt.balance;
+        specVoice.total += amt.total;
+      } else {
+        hasGen = true;
+        genVoice.used += amt.used;
+        genVoice.balance += amt.balance;
+        genVoice.total += amt.total;
+      }
+    }
+  }
+
+  // 4) 与汇总对齐
   if (hasGen && hasSpec) {
     // ok
   } else if (hasSpec && !hasGen) {
@@ -522,11 +573,10 @@ function parseImportantData(apiData, opts) {
     };
     hasGen = genVoice.used > 0 || genVoice.balance > 0 || genVoice.total > 0;
   } else if (hasGen && !hasSpec) {
-    // 明细全是「通用」类：若汇总明显大于通用合计，差值当作专属
     const diffBal = vBalance - genVoice.balance;
     const diffUsed = vUsed - genVoice.used;
     const diffTot = vTotal - genVoice.total;
-    if (diffBal > 1 || diffUsed > 1 || diffTot > 1) {
+    if (diffBal > 30 || diffUsed > 30 || diffTot > 30) {
       hasSpec = true;
       specVoice = {
         used: Math.max(0, diffUsed),
@@ -535,7 +585,6 @@ function parseImportantData(apiData, opts) {
       };
     }
   } else {
-    // 无明细
     hasGen = true;
     genVoice = { used: vUsed, balance: vBalance, total: vTotal };
   }
