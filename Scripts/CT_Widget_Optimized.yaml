@@ -1,49 +1,76 @@
-name: 中国电信中号美化小组件
-description: 中国电信话费余额、本地/全国通话与流量（中号小组件）
-author: Customized for Egern
-icon: https://iili.io/nEuB6Jt.png
-
+name: 中国电信小组件
+description: 中国电信 话费 语音 流量小组件（App RSA 登录 · 国内/本地区分 · 排版优化）
+author: iBL3ND (optimized)
+icon: https://iili.io/nEufFXR.png
+homepage: https://telecom.nufe.ccwu.cc
 compat_arguments:
   ctPhone: ''
   ctPassword: ''
   ctDeviceId: ''
-  ctTitle: 中国电信
-
+  ctShowGeneralFlow: 'true'
+  ctShowDirectionalFlow: 'true'
+  ctShowUsedFlow: 'false'
+  ctShowUsedVoice: 'false'
+  ctTitle: ''
 compat_arguments_schema:
   ctPhone:
-    name: 中国电信手机号
-    description: 请输入电信手机号
+    name: 手机号
+    description: 中国电信手机号
     default_value: ''
   ctPassword:
     name: 服务密码
-    description: 请输入电信服务密码；仅保存在本机 Egern 配置中
+    description: 服务密码 6 位数字，只存在你自己的模块设置里
     default_value: ''
   ctDeviceId:
-    name: 设备 ID（可选）
-    description: 可留空；若登录不稳定，可按原模块说明填写
+    name: 设备 ID
+    description: '复制网站去浏览器打开获取设备ID  使用步骤：1.使用短信登录授权设备 2. 复制显示的设备 ID 在此填写 3.获取方式：网站 https://telecom.nufe.ccwu.cc'
     default_value: ''
+  ctShowGeneralFlow:
+    name: 显示通用流量
+    description: 关闭则只统计定向流量
+    default_value: 'true'
+    options:
+    - 'true'
+    - 'false'
+  ctShowDirectionalFlow:
+    name: 显示定向/本地流量
+    description: 关闭则不单独显示本地/专用流量
+    default_value: 'true'
+    options:
+    - 'true'
+    - 'false'
+  ctShowUsedFlow:
+    name: 显示已用流量
+    description: 开启显示已用流量，关闭显示剩余流量
+    default_value: 'false'
+    options:
+    - 'true'
+    - 'false'
+  ctShowUsedVoice:
+    name: 显示已用语音
+    description: 开启显示已用语音，关闭显示剩余语音
+    default_value: 'false'
+    options:
+    - 'true'
+    - 'false'
   ctTitle:
     name: 小组件标题
-    description: 中号小组件顶部显示的标题
-    default_value: 中国电信
-
-# 使用前：把下面三个 YOUR_GITHUB_USERNAME/egern-ct-widget 替换为你自己仓库的实际地址，
-# 并将 CT_Widget_Optimized.JS 上传到仓库根目录。
+    description: 默认"中国电信"，可自定义
+    default_value: ''
+dns: {}
 scriptings:
-  - generic:
-      name: china-telecom-widget
-      script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget_Optimized.js
-      env:
-        CT_PHONE: '{{{ctPhone}}}'
-        CT_PASSWORD: '{{{ctPassword}}}'
-        CT_DEVICE_ID: '{{{ctDeviceId}}}'
-        CT_TITLE: '{{{ctTitle}}}'
-
-  - schedule:
-      name: 中国电信缓存刷新
-      cron: '*/30 * * * *'
-      script_url: https://raw.githubusercontent.com/ghostLL/blackzi/refs/heads/main/Scripts/CT_Widget_Optimized.js
-
+- generic:
+    name: china-telecom
+    script_url: https://raw.githubusercontent.com/你的用户名/你的仓库/main/CT_Widget.JS
+    env:
+      CT_PHONE: '{{{ctPhone}}}'
+      CT_PASSWORD: '{{{ctPassword}}}'
+      CT_DEVICE_ID: '{{{ctDeviceId}}}'
+      CT_SHOW_GENERAL_FLOW: '{{{ctShowGeneralFlow}}}'
+      CT_SHOW_DIRECTIONAL_FLOW: '{{{ctShowDirectionalFlow}}}'
+      CT_SHOW_USED_FLOW: '{{{ctShowUsedFlow}}}'
+      CT_SHOW_USED_VOICE: '{{{ctShowUsedVoice}}}'
+      CT_TITLE: '{{{ctTitle}}}'
 widgets:
-  - name: china-telecom-widget
-    script_name: china-telecom-widget
+- name: china-telecom
+  script_name: china-telecom
