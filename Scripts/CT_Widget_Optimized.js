@@ -342,7 +342,7 @@ function buildMedium(title,ds,fromCache) {
     type:'stack',direction:'column',alignItems:'start',padding:[6,9,6,9],backgroundColor:bg,borderRadius:11,gap:3,
     children:[
       {type:'stack',direction:'row',alignItems:'center',gap:5,children:[
-        {type:'image',src:`sf-symbol:${symbol}`,color,width:12,height:12},
+        {type:'image',src:`sf-symbol:${symbol}`,color,height:12},
         txt(label,'caption2',color,'medium')
       ]},
       {type:'stack',direction:'row',alignItems:'center',gap:4,children:[
@@ -360,7 +360,7 @@ function buildMedium(title,ds,fromCache) {
       // Header
       {type:'stack',direction:'row',alignItems:'center',gap:6,children:[
         {type:'image',src:'sf-symbol:antenna.radiowaves.left.and.right',
-         color:{light:c.light.accent,dark:c.dark.accent},width:17,height:17},
+         color:{light:c.light.accent,dark:c.dark.accent},height:17},
         txt(title,'headline',{light:c.light.value,dark:c.dark.value},'semibold'),
         {type:'spacer'},
         txt(`${fromCache?'缓存':'更新'} ${timeText(ds.updatedAt)}`,'caption2',
@@ -372,14 +372,14 @@ function buildMedium(title,ds,fromCache) {
        backgroundColor:{light:c.light.feeBg,dark:c.dark.feeBg},borderRadius:11,
        children:[
          {type:'image',src:'sf-symbol:creditcard.fill',
-          color:{light:c.light.fee,dark:c.dark.fee},width:22,height:22},
+          color:{light:c.light.fee,dark:c.dark.fee},height:22},
          {type:'stack',direction:'column',alignItems:'start',gap:1,flex:1,children:[
            txt('话费余额','caption2',{light:c.light.fee,dark:c.dark.fee},'medium'),
            txt(fee.number==='--'?'--':`¥ ${fee.number}`,'title2',
              {light:c.light.fee,dark:c.dark.fee},'bold')
          ]},
          {type:'image',src:'sf-symbol:wallet.bifold',
-          color:{light:c.light.fee,dark:c.dark.fee},width:19,height:19}
+          color:{light:c.light.fee,dark:c.dark.fee},height:19}
        ]},
 
       // Fixed compact two-column rows avoid card overlap in medium widget.
@@ -410,7 +410,7 @@ function buildMedium(title,ds,fromCache) {
 function buildError(title,message) {
   return {type:'widget',padding:14,gap:8,children:[
     {type:'stack',direction:'row',alignItems:'center',gap:6,children:[
-      {type:'image',src:'sf-symbol:exclamationmark.triangle.fill',color:'#FF453A',width:16,height:16},
+      {type:'image',src:'sf-symbol:exclamationmark.triangle.fill',color:'#FF453A',height:16},
       {type:'text',text:title,font:{size:'headline',weight:'bold'},maxLines:1},
     ]},
     {type:'text',text:message,font:{size:'caption1'},maxLines:4},
