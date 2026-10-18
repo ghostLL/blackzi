@@ -276,16 +276,21 @@ function isLocalName(name = '') {
   return /本地|省内|本市|本省/.test(String(name));
 }
 
-// 专属语音：专属/专用/定向，以及原先「本地」类语音包
+// 专属/本地类语音名
 function isSpecialVoiceName(name = '') {
-  return /专属|专用|定向|本地|省内|本市|本省/.test(String(name));
+  return /专属|专用|定向|本地|省内|本市|本省|区域/.test(String(name));
+}
+
+// 通用/国内类语音名
+function isGeneralVoiceName(name = '') {
+  return /国内|通用|全网|全国/.test(String(name));
 }
 
 // 递归收集对象里所有数组项
 function _collectArrayItems(root) {
   const out = [];
   const walk = (node, depth) => {
-    if (!node || depth > 8) return;
+    if (!node || depth > 10) return;
     if (Array.isArray(node)) {
       for (const it of node) {
         if (it && typeof it === 'object') {
@@ -304,26 +309,38 @@ function _collectArrayItems(root) {
 }
 
 function _itemName(it) {
-  return (
-    it.title ||
-    it.name ||
+  return String(
     it.ratableResourcename ||
-    it.productOffName ||
-    it.offerName ||
-    it.flowName ||
-    it.voiceName ||
-    it.pkgName ||
-    ''
+      it.title ||
+      it.name ||
+      it.productOffName ||
+      it.offerName ||
+      it.flowName ||
+      it.voiceName ||
+      it.pkgName ||
+      it.resourceName ||
+      ''
   );
 }
 
 function _isVoiceItem(it) {
   const name = _itemName(it);
   const unit = String(it.unitTypeId ?? it.unitType ?? it.unit ?? it.unitName ?? '');
-  // unitTypeId 1 通常为语音分钟
-  if (unit == 1 || unit === '1' || /分钟|语音|通话/.test(unit)) return true;
-  if (/语音|通话|分钟/.test(name) && !/流量|GB|MB/.test(name)) return true;
+  // unitTypeId == 1 → 语音（与 e.dlife package_detail 一致）
+  if (unit == 1 || unit === '1') return true;
+  if (/分钟/.test(unit) && !/流量/.test(name)) return true;
+  if (/语音|通话/.test(name) && !/流量|GB|MB|流量包/.test(name)) return true;
   return false;
+}
+
+function _voiceAmounts(it) {
+  const u = _safeN(it.usageAmount ?? it.used ?? it.usedAmount);
+  const b = _safeN(it.balanceAmount ?? it.balance ?? it.remainAmount);
+  let t = _safeN(it.ratableAmount ?? it.total ?? it.totalAmount);
+  if (!t) t = u + b;
+  if (String(it.balanceAmount) === '999999999999') return null;
+  if (!u && !b && !t) return null;
+  return { used: u, balance: b, total: t };
 }
 
 function _pickFlow(obj) {
@@ -450,7 +467,8 @@ function parseImportantData(apiData, opts) {
     );
   }
 
-  // —— 语音：国内 + 专属 ——
+  // —— 语音：通用 + 专属 ——
+  // 1) 汇总（qryImportantData）
   const voiceInfo = (apiData && apiData.voiceInfo && apiData.voiceInfo.voiceDataInfo) || {};
   let vTotal = _safeN(voiceInfo.total !== undefined ? voiceInfo.total : apiData && apiData.totalVoice);
   let vUsed = _safeN(voiceInfo.used !== undefined ? voiceInfo.used : apiData && apiData.usedVoice);
@@ -458,43 +476,81 @@ function parseImportantData(apiData, opts) {
     voiceInfo.balance !== undefined ? voiceInfo.balance : Math.max(0, vTotal - vUsed)
   );
 
-  // 从 qryImportantData + userFluxPackage 明细里拆专属语音
+  // 2) 从套餐明细拆分：unitTypeId==1 的语音项
+  let genVoice = { used: 0, balance: 0, total: 0 };
   let specVoice = { used: 0, balance: 0, total: 0 };
-  let hasSpecVoice = false;
+  let hasGen = false;
+  let hasSpec = false;
+
   const pkgData = opts.packageData || null;
   const allItems = [
-    ..._collectArrayItems(apiData && apiData.voiceInfo),
+    ..._collectArrayItems(apiData),
     ..._collectArrayItems(pkgData),
   ];
-  for (const it of allItems) {
-    if (!_isVoiceItem(it) && !isSpecialVoiceName(_itemName(it))) continue;
-    const name = _itemName(it);
-    // 明确是流量的跳过
-    if (/流量|GB|MB|流量包/.test(name) && !/语音|通话/.test(name)) continue;
-    if (!isSpecialVoiceName(name) && !_isVoiceItem(it)) continue;
-    if (!isSpecialVoiceName(name)) continue;
 
-    const u = _safeN(it.used ?? it.usageAmount ?? it.usedAmount);
-    const b = _safeN(it.balance ?? it.balanceAmount ?? it.remainAmount);
-    const t = _safeN(it.total ?? it.ratableAmount ?? it.totalAmount ?? u + b);
-    if (!u && !b && !t) continue;
-    hasSpecVoice = true;
-    specVoice.used += u;
-    specVoice.balance += b;
-    specVoice.total += t;
+  for (const it of allItems) {
+    if (!_isVoiceItem(it)) continue;
+    const name = _itemName(it);
+    if (/流量|GB|MB/.test(name) && !/语音|通话/.test(name)) continue;
+    const amt = _voiceAmounts(it);
+    if (!amt) continue;
+
+    // 优先按名称分类：专属/本地 → 专属；其余语音项 → 通用
+    if (isSpecialVoiceName(name)) {
+      hasSpec = true;
+      specVoice.used += amt.used;
+      specVoice.balance += amt.balance;
+      specVoice.total += amt.total;
+    } else {
+      hasGen = true;
+      genVoice.used += amt.used;
+      genVoice.balance += amt.balance;
+      genVoice.total += amt.total;
+    }
+  }
+
+  // 若明细里同时扫到通用和专属，以明细为准；
+  // 若只有一类明细，另一类用「汇总 − 明细」补齐；
+  // 若完全没有明细，只显示汇总为通用语音。
+  if (hasGen && hasSpec) {
+    // ok
+  } else if (hasSpec && !hasGen) {
+    genVoice = {
+      used: Math.max(0, vUsed - specVoice.used),
+      balance: Math.max(0, vBalance - specVoice.balance),
+      total: Math.max(0, vTotal - specVoice.total),
+    };
+    hasGen = genVoice.used > 0 || genVoice.balance > 0 || genVoice.total > 0;
+  } else if (hasGen && !hasSpec) {
+    // 明细全是「通用」类：若汇总明显大于通用合计，差值当作专属
+    const diffBal = vBalance - genVoice.balance;
+    const diffUsed = vUsed - genVoice.used;
+    const diffTot = vTotal - genVoice.total;
+    if (diffBal > 1 || diffUsed > 1 || diffTot > 1) {
+      hasSpec = true;
+      specVoice = {
+        used: Math.max(0, diffUsed),
+        balance: Math.max(0, diffBal),
+        total: Math.max(0, diffTot),
+      };
+    }
+  } else {
+    // 无明细
+    hasGen = true;
+    genVoice = { used: vUsed, balance: vBalance, total: vTotal };
   }
 
   const voiceDomestic = _mkVoiceItem(
-    '国内语音',
-    hasSpecVoice ? Math.max(0, vUsed - specVoice.used) : vUsed,
-    hasSpecVoice ? Math.max(0, vBalance - specVoice.balance) : vBalance,
-    hasSpecVoice ? Math.max(0, vTotal - specVoice.total) : vTotal,
+    '通用语音',
+    genVoice.used,
+    genVoice.balance,
+    genVoice.total || vTotal,
     showUsedVoice,
     VOICE_DOM_COLOR
   );
 
   let voiceSpecial = null;
-  if (hasSpecVoice && (specVoice.used || specVoice.balance || specVoice.total)) {
+  if (hasSpec && (specVoice.used || specVoice.balance || specVoice.total)) {
     voiceSpecial = _mkVoiceItem(
       '专属语音',
       specVoice.used,
