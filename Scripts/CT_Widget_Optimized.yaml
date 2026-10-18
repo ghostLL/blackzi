@@ -1,0 +1,49 @@
+name: 中国电信中号美化小组件
+description: 中国电信话费余额、本地/全国通话与流量（中号小组件）
+author: Customized for Egern
+icon: https://iili.io/nEuB6Jt.png
+
+compat_arguments:
+  ctPhone: ''
+  ctPassword: ''
+  ctDeviceId: ''
+  ctTitle: 中国电信
+
+compat_arguments_schema:
+  ctPhone:
+    name: 中国电信手机号
+    description: 请输入电信手机号
+    default_value: ''
+  ctPassword:
+    name: 服务密码
+    description: 请输入电信服务密码；仅保存在本机 Egern 配置中
+    default_value: ''
+  ctDeviceId:
+    name: 设备 ID（可选）
+    description: 可留空；若登录不稳定，可按原模块说明填写
+    default_value: ''
+  ctTitle:
+    name: 小组件标题
+    description: 中号小组件顶部显示的标题
+    default_value: 中国电信
+
+# 使用前：把下面三个 YOUR_GITHUB_USERNAME/egern-ct-widget 替换为你自己仓库的实际地址，
+# 并将 CT_Widget_Optimized.JS 上传到仓库根目录。
+scriptings:
+  - generic:
+      name: china-telecom-widget
+      script_url: https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/egern-ct-widget/main/CT_Widget_Optimized.JS
+      env:
+        CT_PHONE: '{{{ctPhone}}}'
+        CT_PASSWORD: '{{{ctPassword}}}'
+        CT_DEVICE_ID: '{{{ctDeviceId}}}'
+        CT_TITLE: '{{{ctTitle}}}'
+
+  - schedule:
+      name: 中国电信缓存刷新
+      cron: '*/30 * * * *'
+      script_url: https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/egern-ct-widget/main/CT_Widget_Optimized.JS
+
+widgets:
+  - name: china-telecom-widget
+    script_name: china-telecom-widget
